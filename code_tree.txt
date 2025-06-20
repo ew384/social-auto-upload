@@ -1,0 +1,120 @@
+.
+├── cli_main.py
+├── code_tree.txt
+├── conf.example.py
+├── db
+│   ├── createTable.py
+│   └── database.db
+├── examples
+│   ├── get_baijiahao_cookie.py
+│   ├── get_bilibili_cookie.py
+│   ├── get_douyin_cookie.py
+│   ├── get_kuaishou_cookie.py
+│   ├── get_tencent_cookie.py
+│   ├── get_tk_cookie.py
+│   ├── get_xiaohongshu_cookie.py
+│   ├── __init__.py
+│   ├── upload_video_to_baijiahao.py
+│   ├── upload_video_to_bilibili.py
+│   ├── upload_video_to_douyin.py
+│   ├── upload_video_to_kuaishou.py
+│   ├── upload_video_to_tencent.py
+│   ├── upload_video_to_tiktok.py
+│   ├── upload_video_to_xhs.py
+│   └── upload_video_to_xiaohongshu.py
+├── __init__.py
+├── logs
+├── media
+│   └── show
+├── myUtils
+│   ├── auth.py
+│   ├── __init__.py
+│   ├── login.py
+│   └── postVideo.py
+├── README.md
+├── requirements.txt
+├── sau_backend
+│   └── README.md
+├── sau_backend.py
+├── sau_frontend
+│   ├── index.html
+│   ├── package.json
+│   ├── public
+│   ├── README.md
+│   ├── src
+│   │   ├── api
+│   │   │   ├── account.js
+│   │   │   ├── index.js
+│   │   │   ├── material.js
+│   │   │   └── user.js
+│   │   ├── App.vue
+│   │   ├── assets
+│   │   ├── components
+│   │   │   └── helloworld.vue
+│   │   ├── main.js
+│   │   ├── router
+│   │   │   └── index.js
+│   │   ├── stores
+│   │   │   ├── account.js
+│   │   │   ├── app.js
+│   │   │   ├── index.js
+│   │   │   └── user.js
+│   │   ├── styles
+│   │   │   ├── index.scss
+│   │   │   ├── reset.scss
+│   │   │   └── variables.scss
+│   │   ├── utils
+│   │   │   └── request.js
+│   │   └── views
+│   │       ├── About.vue
+│   │       ├── AccountManagement.vue
+│   │       ├── Dashboard.vue
+│   │       ├── Home.vue
+│   │       ├── MaterialManagement.vue
+│   │       └── PublishCenter.vue
+│   └── vite.config.js
+├── tree.sh
+├── uploader
+│   ├── baijiahao_uploader
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── bilibili_uploader
+│   │   ├── biliup.exe
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── douyin_uploader
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── __init__.py
+│   ├── ks_uploader
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── tencent_uploader
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── tk_uploader
+│   │   ├── __init__.py
+│   │   ├── main_chrome.py
+│   │   ├── main.py
+│   │   └── tk_config.py
+│   ├── xhs_uploader
+│   │   ├── accounts.ini
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   └── xhs_login_qrcode.py
+│   └── xiaohongshu_uploader
+│       ├── __init__.py
+│       └── main.py
+├── utils
+│   ├── base_social_media.py
+│   ├── constant.py
+│   ├── files_times.py
+│   ├── __init__.py
+│   ├── log.py
+│   ├── network.py
+│   └── stealth.min.js
+└── videos
+    ├── demo.mp4
+    └── demo.txt
+
+29 directories, 88 files
