@@ -172,7 +172,388 @@ def get_all_files():
             "data": None
         }), 500
 
+# 在 sau_backend.py 中添加以下路由和方法
 
+# ============ 分组管理相关API ============
+
+@app.route('/groups', methods=['GET'])
+def get_all_groups():
+    """获取所有分组"""
+    try:
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # 获取分组及其账号数量
+            cursor.execute('''
+                SELECT 
+                    g.*,
+                    COUNT(u.id) as account_count
+                FROM account_groups g
+                LEFT JOIN user_info u ON g.id = u.group_id
+                GROUP BY g.id
+                ORDER BY g.sort_order, g.name
+            ''')
+            
+            groups = [dict(row) for row in cursor.fetchall()]
+            
+            return jsonify({
+                "code": 200,
+                "msg": "success",
+                "data": groups
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"获取分组失败: {str(e)}",
+            "data": None
+        }), 500
+
+@app.route('/groups', methods=['POST'])
+def create_group():
+    """创建新分组"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        color = data.get('color', '#5B73DE')
+        icon = data.get('icon', 'Users')
+        
+        if not name:
+            return jsonify({
+                "code": 400,
+                "msg": "分组名称不能为空",
+                "data": None
+            }), 400
+        
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            
+            # 检查分组名是否已存在
+            cursor.execute("SELECT COUNT(*) FROM account_groups WHERE name = ?", (name,))
+            if cursor.fetchone()[0] > 0:
+                return jsonify({
+                    "code": 400,
+                    "msg": "分组名称已存在",
+                    "data": None
+                }), 400
+            
+            # 获取最大排序号
+            cursor.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM account_groups")
+            sort_order = cursor.fetchone()[0]
+            
+            # 插入新分组
+            cursor.execute('''
+                INSERT INTO account_groups (name, description, color, icon, sort_order)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (name, description, color, icon, sort_order))
+            
+            group_id = cursor.lastrowid
+            conn.commit()
+            
+            return jsonify({
+                "code": 200,
+                "msg": "分组创建成功",
+                "data": {"id": group_id}
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"创建分组失败: {str(e)}",
+            "data": None
+        }), 500
+
+@app.route('/groups/<int:group_id>', methods=['PUT'])
+def update_group(group_id):
+    """更新分组信息"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        color = data.get('color', '#5B73DE')
+        icon = data.get('icon', 'Users')
+        
+        if not name:
+            return jsonify({
+                "code": 400,
+                "msg": "分组名称不能为空",
+                "data": None
+            }), 400
+        
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            
+            # 检查分组是否存在
+            cursor.execute("SELECT COUNT(*) FROM account_groups WHERE id = ?", (group_id,))
+            if cursor.fetchone()[0] == 0:
+                return jsonify({
+                    "code": 404,
+                    "msg": "分组不存在",
+                    "data": None
+                }), 404
+            
+            # 检查名称是否与其他分组冲突
+            cursor.execute("SELECT COUNT(*) FROM account_groups WHERE name = ? AND id != ?", (name, group_id))
+            if cursor.fetchone()[0] > 0:
+                return jsonify({
+                    "code": 400,
+                    "msg": "分组名称已存在",
+                    "data": None
+                }), 400
+            
+            # 更新分组
+            cursor.execute('''
+                UPDATE account_groups 
+                SET name = ?, description = ?, color = ?, icon = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (name, description, color, icon, group_id))
+            
+            conn.commit()
+            
+            return jsonify({
+                "code": 200,
+                "msg": "分组更新成功",
+                "data": None
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"更新分组失败: {str(e)}",
+            "data": None
+        }), 500
+
+@app.route('/groups/<int:group_id>', methods=['DELETE'])
+def delete_group(group_id):
+    """删除分组"""
+    try:
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            
+            # 检查分组是否存在
+            cursor.execute("SELECT name FROM account_groups WHERE id = ?", (group_id,))
+            group = cursor.fetchone()
+            if not group:
+                return jsonify({
+                    "code": 404,
+                    "msg": "分组不存在",
+                    "data": None
+                }), 404
+            
+            # 检查是否为默认分组
+            if group[0] == '默认分组':
+                return jsonify({
+                    "code": 400,
+                    "msg": "默认分组不能删除",
+                    "data": None
+                }), 400
+            
+            # 检查分组下是否有账号
+            cursor.execute("SELECT COUNT(*) FROM user_info WHERE group_id = ?", (group_id,))
+            account_count = cursor.fetchone()[0]
+            
+            if account_count > 0:
+                # 将账号移动到默认分组
+                cursor.execute('''
+                    UPDATE user_info 
+                    SET group_id = (SELECT id FROM account_groups WHERE name = '默认分组' LIMIT 1)
+                    WHERE group_id = ?
+                ''', (group_id,))
+            
+            # 删除分组
+            cursor.execute("DELETE FROM account_groups WHERE id = ?", (group_id,))
+            conn.commit()
+            
+            return jsonify({
+                "code": 200,
+                "msg": f"分组删除成功，{account_count}个账号已移至默认分组",
+                "data": None
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"删除分组失败: {str(e)}",
+            "data": None
+        }), 500
+
+@app.route('/groups/<int:group_id>/accounts', methods=['GET'])
+def get_group_accounts(group_id):
+    """获取分组下的账号列表"""
+    try:
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT u.*, g.name as group_name, g.color as group_color
+                FROM user_info u
+                LEFT JOIN account_groups g ON u.group_id = g.id
+                WHERE u.group_id = ?
+                ORDER BY u.userName
+            ''', (group_id,))
+            
+            accounts = [dict(row) for row in cursor.fetchall()]
+            
+            return jsonify({
+                "code": 200,
+                "msg": "success",
+                "data": accounts
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"获取分组账号失败: {str(e)}",
+            "data": None
+        }), 500
+
+@app.route('/accounts/<int:account_id>/group', methods=['PUT'])
+def move_account_to_group():
+    """移动账号到指定分组"""
+    try:
+        data = request.get_json()
+        account_id = data.get('account_id')
+        group_id = data.get('group_id')
+        
+        if not account_id or not group_id:
+            return jsonify({
+                "code": 400,
+                "msg": "账号ID和分组ID不能为空",
+                "data": None
+            }), 400
+        
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            
+            # 验证账号和分组是否存在
+            cursor.execute("SELECT COUNT(*) FROM user_info WHERE id = ?", (account_id,))
+            if cursor.fetchone()[0] == 0:
+                return jsonify({
+                    "code": 404,
+                    "msg": "账号不存在",
+                    "data": None
+                }), 404
+            
+            cursor.execute("SELECT COUNT(*) FROM account_groups WHERE id = ?", (group_id,))
+            if cursor.fetchone()[0] == 0:
+                return jsonify({
+                    "code": 404,
+                    "msg": "分组不存在",
+                    "data": None
+                }), 404
+            
+            # 更新账号分组
+            cursor.execute("UPDATE user_info SET group_id = ? WHERE id = ?", (group_id, account_id))
+            conn.commit()
+            
+            return jsonify({
+                "code": 200,
+                "msg": "账号分组更新成功",
+                "data": None
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"移动账号失败: {str(e)}",
+            "data": None
+        }), 500
+
+@app.route('/accounts/batch-group', methods=['PUT'])
+def batch_move_accounts_to_group():
+    """批量移动账号到指定分组"""
+    try:
+        data = request.get_json()
+        account_ids = data.get('account_ids', [])
+        group_id = data.get('group_id')
+        
+        if not account_ids or not group_id:
+            return jsonify({
+                "code": 400,
+                "msg": "账号列表和分组ID不能为空",
+                "data": None
+            }), 400
+        
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            
+            # 验证分组是否存在
+            cursor.execute("SELECT COUNT(*) FROM account_groups WHERE id = ?", (group_id,))
+            if cursor.fetchone()[0] == 0:
+                return jsonify({
+                    "code": 404,
+                    "msg": "分组不存在",
+                    "data": None
+                }), 404
+            
+            # 批量更新账号分组
+            placeholders = ','.join(['?' for _ in account_ids])
+            cursor.execute(
+                f"UPDATE user_info SET group_id = ? WHERE id IN ({placeholders})",
+                [group_id] + account_ids
+            )
+            
+            affected_rows = cursor.rowcount
+            conn.commit()
+            
+            return jsonify({
+                "code": 200,
+                "msg": f"成功移动{affected_rows}个账号到新分组",
+                "data": {"affected_count": affected_rows}
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"批量移动账号失败: {str(e)}",
+            "data": None
+        }), 500
+
+# 修改现有的 getValidAccounts 接口，返回分组信息
+@app.route("/getValidAccountsWithGroups", methods=['GET'])
+async def getValidAccountsWithGroups():
+    """获取带分组信息的账号列表"""
+    try:
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # 使用视图查询账号和分组信息
+            cursor.execute('''
+                SELECT 
+                    u.id, u.type, u.filePath, u.userName, u.status, u.group_id,
+                    g.name as group_name, g.color as group_color, g.icon as group_icon
+                FROM user_info u
+                LEFT JOIN account_groups g ON u.group_id = g.id
+                ORDER BY g.sort_order, g.name, u.userName
+            ''')
+            
+            accounts = [dict(row) for row in cursor.fetchall()]
+            
+            # 验证账号状态
+            for account in accounts:
+                flag = await check_cookie(account['type'], account['filePath'])
+                if not flag:
+                    account['status'] = 0
+                    cursor.execute('UPDATE user_info SET status = ? WHERE id = ?', (0, account['id']))
+            
+            conn.commit()
+            
+            return jsonify({
+                "code": 200,
+                "msg": "success",
+                "data": accounts
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"获取账号列表失败: {str(e)}",
+            "data": None
+        }), 500
 @app.route("/getValidAccounts",methods=['GET'])
 async def getValidAccounts():
     with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
@@ -478,6 +859,21 @@ def sse_stream(status_queue):
         else:
             # 避免 CPU 占满
             time.sleep(0.1)
+def init_database():
+    """应用启动时初始化数据库"""
+    try:
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), 'db'))
+        
+        from database_manager import DatabaseManager
+        manager = DatabaseManager(Path(BASE_DIR / "db" / "database.db"))
+        manager.auto_manage()
+        
+    except Exception as e:
+        print(f"数据库初始化失败: {e}")
 
+# 在应用启动时调用
 if __name__ == '__main__':
+    init_database()  # 🆕 添加这行
     app.run(host='0.0.0.0' ,port=5409)
