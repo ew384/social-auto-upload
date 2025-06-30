@@ -1,64 +1,78 @@
 <template>
   <div id="app">
-    <el-container>
-      <el-aside :width="isCollapse ? '64px' : '200px'">
-        <div class="sidebar">
+    <div class="app-layout">
+      <!-- 侧边栏 -->
+      <div :class="['sidebar', { collapsed: isCollapsed }]">
+        <!-- Logo区域 -->
+        <div class="sidebar-header">
           <div class="logo">
-            <img v-show="isCollapse" src="/vite.svg" alt="Logo" class="logo-img">
-            <h2 v-show="!isCollapse">自媒体自动化运营系统</h2>
+            <div class="logo-icon">
+              <el-icon><VideoCamera /></el-icon>
+            </div>
+            <transition name="fade">
+              <span v-show="!isCollapsed" class="logo-text">SAU运营系统</span>
+            </transition>
           </div>
-          <el-menu
-            :router="true"
-            :default-active="activeMenu"
-            :collapse="isCollapse"
-            class="sidebar-menu"
-            background-color="#001529"
-            text-color="#fff"
-            active-text-color="#409EFF"
-          >
-            <el-menu-item index="/">
-              <el-icon><HomeFilled /></el-icon>
-              <span>首页</span>
-            </el-menu-item>
-            <el-menu-item index="/account-management">
-              <el-icon><User /></el-icon>
-              <span>账号管理</span>
-            </el-menu-item>
-            <el-menu-item index="/material-management">
-              <el-icon><Picture /></el-icon>
-              <span>素材管理</span>
-            </el-menu-item>
-            <el-menu-item index="/publish-center">
-              <el-icon><Upload /></el-icon>
-              <span>发布中心</span>
-            </el-menu-item>
-            <el-menu-item index="/website">
-              <el-icon><Monitor /></el-icon>
-              <span>网站</span>
-            </el-menu-item>
-            <el-menu-item index="/data">
-              <el-icon><DataAnalysis /></el-icon>
-              <span>数据</span>
-            </el-menu-item>
-          </el-menu>
         </div>
-      </el-aside>
-      <el-container>
-        <el-header>
-          <div class="header-content">
-            <div class="header-left">
-              <el-icon class="toggle-sidebar" @click="toggleSidebar"><Fold /></el-icon>
-            </div>
-            <div class="header-right">
-              <!-- 账号信息已移除 -->
+
+        <!-- 导航菜单 -->
+        <div class="sidebar-menu">
+          <nav class="nav-menu">
+            <router-link 
+              v-for="item in menuItems" 
+              :key="item.path"
+              :to="item.path"
+              :class="['nav-item', { active: isActiveRoute(item.path) }]"
+            >
+              <div class="nav-icon">
+                <component :is="item.icon" />
+              </div>
+              <transition name="fade">
+                <span v-show="!isCollapsed" class="nav-text">{{ item.name }}</span>
+              </transition>
+              <div v-show="!isCollapsed && item.badge" class="nav-badge">{{ item.badge }}</div>
+            </router-link>
+          </nav>
+        </div>
+
+        <!-- 折叠按钮 -->
+        <div class="sidebar-footer">
+          <button @click="toggleSidebar" class="collapse-btn">
+            <el-icon>
+              <component :is="isCollapsed ? 'Expand' : 'Fold'" />
+            </el-icon>
+          </button>
+        </div>
+      </div>
+
+      <!-- 主内容区 -->
+      <div class="main-content">
+        <!-- 顶部栏 -->
+        <header class="top-header">
+          <div class="header-left">
+            <div class="page-title">{{ currentPageTitle }}</div>
+          </div>
+          <div class="header-right">
+            <div class="header-actions">
+              <el-button type="text" class="action-btn">
+                <el-icon><Bell /></el-icon>
+              </el-button>
+              <el-button type="text" class="action-btn">
+                <el-icon><Setting /></el-icon>
+              </el-button>
+              <div class="user-avatar">
+                <el-avatar :size="32" src="/vite.svg" />
+              </div>
             </div>
           </div>
-        </el-header>
-        <el-main>
+        </header>
+
+        <!-- 页面内容 -->
+        <main class="page-content">
           <router-view />
-        </el-main>
-      </el-container>
-    </el-container>
+        </main>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -66,137 +80,331 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { 
-  HomeFilled, User, Monitor, DataAnalysis, 
-  Fold, Picture, Upload
+  VideoCamera, HomeFilled, Upload, User, 
+  Monitor, DataAnalysis, Fold, Expand,
+  Bell, Setting
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
+const isCollapsed = ref(false)
 
-// 当前激活的菜单项
-const activeMenu = computed(() => {
-  return route.path
+// 菜单项配置
+const menuItems = [
+  { path: '/', name: '首页', icon: 'HomeFilled' },
+  { path: '/publish-center', name: '发布', icon: 'Upload', badge: '3' },
+  { path: '/account-management', name: '账号', icon: 'User' },
+  { path: '/material-management', name: '素材', icon: 'VideoCamera' },
+  { path: '/website', name: '网站', icon: 'Monitor' },
+  { path: '/data', name: '数据', icon: 'DataAnalysis' }
+]
+
+// 当前页面标题
+const currentPageTitle = computed(() => {
+  const currentItem = menuItems.find(item => item.path === route.path)
+  return currentItem ? currentItem.name : '自媒体运营系统'
 })
 
-// 侧边栏折叠状态
-const isCollapse = ref(false)
+// 判断路由是否激活
+const isActiveRoute = (path) => {
+  return route.path === path
+}
 
-// 切换侧边栏折叠状态
+// 切换侧边栏
 const toggleSidebar = () => {
-  isCollapse.value = !isCollapse.value
+  isCollapsed.value = !isCollapsed.value
 }
 </script>
 
 <style lang="scss" scoped>
-@use '@/styles/variables.scss' as *;
+// 导入新的变量
+$primary: #5B73DE;
+$bg-dark: #1F2937;
+$bg-light: #F8FAFC;
+$bg-white: #FFFFFF;
+$text-primary: #1E293B;
+$text-secondary: #64748B;
+$text-muted: #94A3B8;
+$text-white: #FFFFFF;
+$border-light: #E2E8F0;
+$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+$radius-md: 8px;
+$radius-lg: 12px;
+$space-sm: 8px;
+$space-md: 16px;
+$space-lg: 24px;
 
 #app {
   min-height: 100vh;
+  background-color: $bg-light;
 }
 
-.el-container {
-  height: 100vh;
+.app-layout {
+  display: flex;
+  min-height: 100vh;
 }
 
-.el-aside {
-  background-color: #001529;
-  color: #fff;
-  height: 100vh;
-  overflow: hidden;
-  transition: width 0.3s;
-  
-  .sidebar {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    
+// 侧边栏样式
+.sidebar {
+  width: 240px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  color: $text-primary;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 100;
+  box-shadow: $shadow-lg;
+  border-right: 1px solid $border-light;
+
+  &.collapsed {
+    width: 64px;
+  }
+
+  .sidebar-header {
+    padding: $space-lg $space-md;
+    border-bottom: 1px solid $border-light;
+
     .logo {
-      height: 60px;
-      padding: 0 16px;
       display: flex;
       align-items: center;
-      background-color: #002140;
-      overflow: hidden;
-      
-      .logo-img {
+      gap: $space-sm;
+
+      .logo-icon {
         width: 32px;
         height: 32px;
-        margin-right: 12px;
-      }
-      
-      h2 {
-        color: #fff;
-        font-size: 16px;
-        font-weight: 600;
-        white-space: nowrap;
-        margin: 0;
-      }
-    }
-    
-    .sidebar-menu {
-      border-right: none;
-      flex: 1;
-      
-      .el-menu-item {
+        background: linear-gradient(135deg, $primary 0%, #8B9EE8 100%);
+        border-radius: $radius-md;
         display: flex;
         align-items: center;
-        
+        justify-content: center;
+        flex-shrink: 0;
+
         .el-icon {
-          margin-right: 10px;
+          font-size: 18px;
+          color: white;
+        }
+      }
+
+      .logo-text {
+        font-size: 16px;
+        font-weight: 600;
+        color: $text-primary;
+        white-space: nowrap;
+      }
+    }
+  }
+
+  .sidebar-menu {
+    flex: 1;
+    padding: $space-md 0;
+
+    .nav-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        padding: 12px $space-md;
+        color: $text-secondary;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        position: relative;
+        margin: 0 $space-sm;
+        border-radius: $radius-md;
+
+        &:hover {
+          background-color: rgba(91, 115, 222, 0.08);
+          color: $primary;
+          transform: translateX(2px);
+        }
+
+        &.active {
+          background: linear-gradient(135deg, $primary 0%, #8B9EE8 100%);
+          color: white;
+          box-shadow: 0 4px 12px rgba(91, 115, 222, 0.3);
+
+          &::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 20px;
+            background-color: $primary;
+            border-radius: 2px;
+          }
+        }
+
+        .nav-icon {
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+
+          .el-icon {
+            font-size: 18px;
+          }
+        }
+
+        .nav-text {
+          margin-left: $space-sm;
+          font-size: 14px;
+          font-weight: 500;
+          white-space: nowrap;
+        }
+
+        .nav-badge {
+          margin-left: auto;
+          background-color: #EF4444;
+          color: white;
+          font-size: 12px;
+          padding: 2px 6px;
+          border-radius: 10px;
+          min-width: 18px;
+          text-align: center;
+        }
+      }
+    }
+  }
+
+  .sidebar-footer {
+    padding: $space-md;
+    border-top: 1px solid $border-light;
+
+    .collapse-btn {
+      width: 100%;
+      height: 40px;
+      background: rgba(91, 115, 222, 0.08);
+      border: none;
+      border-radius: $radius-md;
+      color: $text-secondary;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:hover {
+        background-color: rgba(91, 115, 222, 0.15);
+        color: $primary;
+      }
+
+      .el-icon {
+        font-size: 16px;
+      }
+    }
+  }
+}
+
+// 主内容区样式
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.top-header {
+  height: 64px;
+  background-color: $bg-white;
+  border-bottom: 1px solid $border-light;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 $space-lg;
+  box-shadow: $shadow-md;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+
+  .header-left {
+    .page-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: $text-primary;
+    }
+  }
+
+  .header-right {
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: $space-sm;
+
+      .action-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: $radius-md;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: $text-secondary;
+        transition: all 0.3s ease;
+
+        &:hover {
+          background-color: $bg-light;
+          color: $primary;
+        }
+
+        .el-icon {
           font-size: 18px;
         }
       }
-    }
-  }
-}
 
-.el-header {
-  background-color: #fff;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
-  padding: 0;
-  height: 60px;
-  
-  .header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    height: 100%;
-    padding: 0 16px;
-    
-    .header-left {
-      .toggle-sidebar {
-        font-size: 20px;
-        cursor: pointer;
-        color: $text-regular;
-        
-        &:hover {
-          color: $primary-color;
-        }
-      }
-    }
-    
-    .header-right {
-      .user-dropdown {
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-        
-        .username {
-          margin: 0 8px;
-          color: $text-regular;
-        }
-        
-        .el-icon {
-          font-size: 12px;
-          color: $text-secondary;
-        }
+      .user-avatar {
+        margin-left: $space-sm;
       }
     }
   }
 }
 
-.el-main {
-  background-color: $bg-color-page;
-  padding: 20px;
-  overflow-y: auto;
+.page-content {
+  flex: 1;
+  padding: $space-lg;
+  background-color: $bg-light;
+}
+
+// 动画效果
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 1000;
+
+    &.collapsed {
+      transform: translateX(-100%);
+    }
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+
+  .top-header {
+    padding: 0 $space-md;
+
+    .page-title {
+      font-size: 18px;
+    }
+  }
+
+  .page-content {
+    padding: $space-md;
+  }
 }
 </style>

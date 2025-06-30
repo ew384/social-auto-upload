@@ -1,647 +1,606 @@
 <template>
   <div class="publish-center">
-    <!-- Tab管理区域 -->
-    <div class="tab-management">
-      <div class="tab-header">
-        <div class="tab-list">
-          <div 
-            v-for="tab in tabs" 
-            :key="tab.name"
-            :class="['tab-item', { active: activeTab === tab.name }]"
-            @click="activeTab = tab.name"
-          >
-            <span>{{ tab.label }}</span>
-            <el-icon 
-              v-if="tabs.length > 1"
-              class="close-icon" 
-              @click.stop="removeTab(tab.name)"
-            >
-              <Close />
-            </el-icon>
-          </div>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div class="header-content">
+        <div class="header-left">
+          <h1 class="page-title">发布中心</h1>
+          <p class="page-subtitle">一键发布内容到多个平台</p>
         </div>
-        <div class="tab-actions">
-          <el-button 
-            type="primary" 
-            size="small" 
-            @click="addTab"
-            class="add-tab-btn"
-          >
+        <div class="header-actions">
+          <el-button @click="addNewPublishTask" class="add-task-btn">
             <el-icon><Plus /></el-icon>
-            添加Tab
-          </el-button>
-          <el-button 
-            type="success" 
-            size="small" 
-            @click="batchPublish"
-            :loading="batchPublishing"
-            class="batch-publish-btn"
-          >
-            批量发布
+            新建发布任务
           </el-button>
         </div>
       </div>
     </div>
 
-    <!-- 内容区域 -->
-    <div class="publish-content">
-      <div class="tab-content-wrapper">
-        <div 
-          v-for="tab in tabs" 
-          :key="tab.name"
-          v-show="activeTab === tab.name"
-          class="tab-content"
-        >
-          <!-- 发布状态提示 -->
-          <div v-if="tab.publishStatus" class="publish-status">
-            <el-alert
-              :title="tab.publishStatus.message"
-              :type="tab.publishStatus.type"
-              :closable="false"
-              show-icon
-            />
-          </div>
-
-          <!-- 视频上传区域 -->
-          <div class="upload-section">
-            <h3>视频</h3>
-            <div class="upload-options">
-              <el-button type="primary" @click="showUploadOptions(tab)" class="upload-btn">
-                <el-icon><Upload /></el-icon>
-                上传视频
-              </el-button>
-            </div>
-            
-            <!-- 已上传文件列表 -->
-            <div v-if="tab.fileList.length > 0" class="uploaded-files">
-              <h4>已上传文件：</h4>
-              <div class="file-list">
-                <div v-for="(file, index) in tab.fileList" :key="index" class="file-item">
-                  <el-link :href="file.url" target="_blank" type="primary">{{ file.name }}</el-link>
-                  <span class="file-size">{{ (file.size / 1024 / 1024).toFixed(2) }}MB</span>
-                  <el-button type="danger" size="small" @click="removeFile(tab, index)">删除</el-button>
-                </div>
-              </div>
+    <!-- 发布任务列表 -->
+    <div class="publish-tasks">
+      <div 
+        v-for="task in publishTasks" 
+        :key="task.id"
+        class="publish-task-card"
+      >
+        <!-- 任务头部 -->
+        <div class="task-header">
+          <div class="task-info">
+            <h3 class="task-title">{{ task.title || `发布任务 ${task.id}` }}</h3>
+            <div class="task-status">
+              <el-tag 
+                :type="getTaskStatusType(task.status)" 
+                size="small"
+                effect="light"
+              >
+                {{ getTaskStatusText(task.status) }}
+              </el-tag>
             </div>
           </div>
-
-          <!-- 上传选项弹窗 -->
-          <el-dialog
-            v-model="uploadOptionsVisible"
-            title="选择上传方式"
-            width="400px"
-            class="upload-options-dialog"
-          >
-            <div class="upload-options-content">
-              <el-button type="primary" @click="selectLocalUpload" class="option-btn">
-                <el-icon><Upload /></el-icon>
-                本地上传
-              </el-button>
-              <el-button type="success" @click="selectMaterialLibrary" class="option-btn">
-                <el-icon><Folder /></el-icon>
-                素材库
-              </el-button>
-            </div>
-          </el-dialog>
-
-          <!-- 本地上传弹窗 -->
-          <el-dialog
-            v-model="localUploadVisible"
-            title="本地上传"
-            width="600px"
-            class="local-upload-dialog"
-          >
-            <el-upload
-              class="video-upload"
-              drag
-              :auto-upload="true"
-              :action="`${apiBaseUrl}/upload`"
-              :on-success="(response, file) => handleUploadSuccess(response, file, currentUploadTab)"
-              :on-error="handleUploadError"
-              multiple
-              accept="video/*"
-              :headers="authHeaders"
+          <div class="task-actions">
+            <el-button 
+              v-if="task.status === 'draft'"
+              type="primary" 
+              size="small"
+              @click="publishTask(task)"
+              :loading="task.publishing"
             >
-              <el-icon class="el-icon--upload"><Upload /></el-icon>
-              <div class="el-upload__text">
-                将视频文件拖到此处，或<em>点击上传</em>
-              </div>
-              <template #tip>
-                <div class="el-upload__tip">
-                  支持MP4、AVI等视频格式，可上传多个文件
-                </div>
-              </template>
-            </el-upload>
-          </el-dialog>
+              <el-icon><Upload /></el-icon>
+              {{ task.publishing ? '发布中' : '立即发布' }}
+            </el-button>
+            <el-button 
+              size="small" 
+              @click="duplicateTask(task)"
+            >
+              <el-icon><CopyDocument /></el-icon>
+              复制
+            </el-button>
+            <el-button 
+              size="small" 
+              type="danger"
+              @click="deleteTask(task)"
+            >
+              <el-icon><Delete /></el-icon>
+              删除
+            </el-button>
+          </div>
+        </div>
 
-          <!-- 批量发布进度对话框 -->
-          <el-dialog
-            v-model="batchPublishDialogVisible"
-            title="批量发布进度"
-            width="500px"
-            :close-on-click-modal="false"
-            :close-on-press-escape="false"
-            :show-close="false"
+        <!-- 进度指示器 -->
+        <div class="progress-steps">
+          <div 
+            v-for="(step, index) in steps" 
+            :key="step.key"
+            :class="['step-item', {
+              'active': task.currentStep === step.key,
+              'completed': getStepIndex(task.currentStep) > index,
+              'error': task.status === 'error' && task.currentStep === step.key
+            }]"
+            @click="setCurrentStep(task, step.key)"
           >
-            <div class="publish-progress">
-              <el-progress 
-                :percentage="publishProgress"
-                :status="publishProgress === 100 ? 'success' : ''"
-              />
-              <div v-if="currentPublishingTab" class="current-publishing">
-                正在发布：{{ currentPublishingTab.label }}
-              </div>
-              
-              <!-- 发布结果列表 -->
-              <div class="publish-results" v-if="publishResults.length > 0">
-                <div 
-                  v-for="(result, index) in publishResults" 
-                  :key="index"
-                  :class="['result-item', result.status]"
-                >
-                  <el-icon v-if="result.status === 'success'"><Check /></el-icon>
-                  <el-icon v-else-if="result.status === 'error'"><Close /></el-icon>
-                  <el-icon v-else><InfoFilled /></el-icon>
-                  <span class="label">{{ result.label }}</span>
-                  <span class="message">{{ result.message }}</span>
-                </div>
-              </div>
+            <div class="step-circle">
+              <el-icon v-if="getStepIndex(task.currentStep) > index"><Check /></el-icon>
+              <el-icon v-else-if="task.status === 'error' && task.currentStep === step.key"><Close /></el-icon>
+              <span v-else>{{ index + 1 }}</span>
+            </div>
+            <div class="step-label">{{ step.label }}</div>
+          </div>
+        </div>
+
+        <!-- 步骤内容 -->
+        <div class="step-content">
+          <!-- 步骤1: 选择视频 -->
+          <div v-show="task.currentStep === 'video'" class="step-panel">
+            <div class="step-header">
+              <h4>选择视频文件</h4>
+              <p>支持上传本地视频或从素材库选择</p>
             </div>
             
-            <template #footer>
-              <div class="dialog-footer">
-                <el-button 
-                  @click="cancelBatchPublish" 
-                  :disabled="publishProgress === 100"
+            <div class="upload-section">
+              <div v-if="task.videos.length === 0" class="upload-area">
+                <el-upload
+                  class="video-uploader"
+                  drag
+                  multiple
+                  :auto-upload="true"
+                  :action="`${apiBaseUrl}/upload`"
+                  :on-success="(response, file) => handleVideoUploadSuccess(response, file, task)"
+                  :on-error="handleVideoUploadError"
+                  accept="video/*"
+                  :headers="authHeaders"
                 >
-                  取消发布
-                </el-button>
-                <el-button 
-                  type="primary" 
-                  @click="batchPublishDialogVisible = false"
-                  v-if="publishProgress === 100"
-                >
-                  关闭
-                </el-button>
+                  <div class="upload-content">
+                    <el-icon class="upload-icon"><VideoCamera /></el-icon>
+                    <div class="upload-text">
+                      <div>将视频文件拖拽到此处</div>
+                      <div class="upload-hint">或 <em>点击上传</em></div>
+                    </div>
+                  </div>
+                </el-upload>
+                
+                <div class="upload-options">
+                  <el-button @click="selectFromLibrary(task)" class="library-btn">
+                    <el-icon><Folder /></el-icon>
+                    从素材库选择
+                  </el-button>
+                </div>
               </div>
-            </template>
-          </el-dialog>
 
-          <!-- 素材库选择弹窗 -->
-          <el-dialog
-            v-model="materialLibraryVisible"
-            title="选择素材"
-            width="800px"
-            class="material-library-dialog"
-          >
-            <div class="material-library-content">
-              <el-checkbox-group v-model="selectedMaterials">
-                <div class="material-list">
-                  <div
-                    v-for="material in materials"
-                    :key="material.id"
-                    class="material-item"
+              <!-- 已选择的视频列表 -->
+              <div v-else class="selected-videos">
+                <div class="videos-header">
+                  <h5>已选择视频 ({{ task.videos.length }})</h5>
+                  <el-button size="small" @click="addMoreVideos(task)">
+                    <el-icon><Plus /></el-icon>
+                    添加更多
+                  </el-button>
+                </div>
+                <div class="videos-grid">
+                  <div 
+                    v-for="(video, index) in task.videos" 
+                    :key="index"
+                    class="video-item"
                   >
-                    <el-checkbox :label="material.id" class="material-checkbox">
-                      <div class="material-info">
-                        <div class="material-name">{{ material.filename }}</div>
-                        <div class="material-details">
-                          <span class="file-size">{{ material.filesize }}MB</span>
-                          <span class="upload-time">{{ material.upload_time }}</span>
-                        </div>
+                    <div class="video-preview">
+                      <el-icon class="video-icon"><VideoPlay /></el-icon>
+                      <div class="video-overlay">
+                        <el-button size="small" @click="previewVideo(video)">
+                          <el-icon><View /></el-icon>
+                        </el-button>
+                        <el-button size="small" type="danger" @click="removeVideo(task, index)">
+                          <el-icon><Delete /></el-icon>
+                        </el-button>
                       </div>
-                    </el-checkbox>
+                    </div>
+                    <div class="video-info">
+                      <div class="video-name">{{ video.name }}</div>
+                      <div class="video-size">{{ formatFileSize(video.size) }}</div>
+                    </div>
                   </div>
                 </div>
-              </el-checkbox-group>
-            </div>
-            <template #footer>
-              <div class="dialog-footer">
-                <el-button @click="materialLibraryVisible = false">取消</el-button>
-                <el-button type="primary" @click="confirmMaterialSelection">确定</el-button>
               </div>
-            </template>
-          </el-dialog>
-
-          <!-- 账号选择 -->
-          <div class="account-section">
-            <h3>账号</h3>
-            <div class="account-display">
-              <div class="selected-accounts">
-                <el-tag
-                  v-for="(account, index) in tab.selectedAccounts"
-                  :key="index"
-                  closable
-                  @close="removeAccount(tab, index)"
-                  class="account-tag"
-                >
-                  {{ getAccountDisplayName(account) }}
-                </el-tag>
-              </div>
-              <el-button 
-                type="primary" 
-                plain 
-                @click="openAccountDialog(tab)"
-                class="select-account-btn"
-              >
-                选择账号
-              </el-button>
             </div>
           </div>
 
-          <!-- 账号选择弹窗 -->
-          <el-dialog
-            v-model="accountDialogVisible"
-            title="选择账号"
-            width="600px"
-            class="account-dialog"
-          >
-            <div class="account-dialog-content">
-              <el-checkbox-group v-model="tempSelectedAccounts">
-                <div class="account-list">
-                  <el-checkbox
-                    v-for="account in availableAccounts"
-                    :key="account.id"
-                    :label="account.id"
-                    class="account-item"
-                  >
-                    <div class="account-info">
-                      <span class="account-name">{{ account.name }}</span>                      
+          <!-- 步骤2: 选择账号 -->
+          <div v-show="task.currentStep === 'accounts'" class="step-panel">
+            <div class="step-header">
+              <h4>选择发布账号</h4>
+              <p>选择要发布内容的账号</p>
+            </div>
+
+            <div class="accounts-section">
+              <!-- 账号选择 -->
+              <div class="accounts-grid">
+                <div 
+                  v-for="account in availableAccounts" 
+                  :key="account.id"
+                  :class="['account-card', { 
+                    'selected': task.selectedAccounts.includes(account.id),
+                    'disabled': account.status !== '正常'
+                  }]"
+                  @click="toggleAccountSelection(task, account)"
+                >
+                  <div class="account-avatar">
+                    <el-avatar :size="40" :src="account.avatar" />
+                    <div :class="['status-dot', account.status === '正常' ? 'online' : 'offline']"></div>
+                    <div v-if="task.selectedAccounts.includes(account.id)" class="selected-mark">
+                      <el-icon><Check /></el-icon>
                     </div>
-                  </el-checkbox>
+                  </div>
+                  <div class="account-info">
+                    <div class="account-name">{{ account.name }}</div>
+                    <div class="account-platform">{{ account.platform }}</div>
+                  </div>
                 </div>
-              </el-checkbox-group>
-            </div>
-
-            <template #footer>
-              <div class="dialog-footer">
-                <el-button @click="accountDialogVisible = false">取消</el-button>
-                <el-button type="primary" @click="confirmAccountSelection">确定</el-button>
               </div>
-            </template>
-          </el-dialog>
 
-          <!-- 平台选择 -->
-          <div class="platform-section">
-            <h3>平台</h3>
-            <el-radio-group v-model="tab.selectedPlatform" class="platform-radios">
-              <el-radio 
-                v-for="platform in platforms" 
-                :key="platform.key"
-                :label="platform.key"
-                class="platform-radio"
-              >
-                {{ platform.name }}
-              </el-radio>
-            </el-radio-group>
-          </div>
-
-          <!-- 标题输入 -->
-          <div class="title-section">
-            <h3>标题</h3>
-            <el-input
-              v-model="tab.title"
-              type="textarea"
-              :rows="3"
-              placeholder="请输入标题"
-              maxlength="100"
-              show-word-limit
-              class="title-input"
-            />
-          </div>
-
-          <!-- 话题输入 -->
-          <div class="topic-section">
-            <h3>话题</h3>
-            <div class="topic-display">
-              <div class="selected-topics">
-                <el-tag
-                  v-for="(topic, index) in tab.selectedTopics"
-                  :key="index"
-                  closable
-                  @close="removeTopic(tab, index)"
-                  class="topic-tag"
-                >
-                  #{{ topic }}
-                </el-tag>
+              <!-- 选中账号统计 -->
+              <div v-if="task.selectedAccounts.length > 0" class="selected-summary">
+                <div class="summary-info">
+                  <el-icon><User /></el-icon>
+                  <span>已选择 {{ task.selectedAccounts.length }} 个账号</span>
+                </div>
+                <el-button size="small" @click="clearAccountSelection(task)">
+                  清空选择
+                </el-button>
               </div>
-              <el-button 
-                type="primary" 
-                plain 
-                @click="openTopicDialog(tab)"
-                class="select-topic-btn"
-              >
-                添加话题
-              </el-button>
             </div>
           </div>
 
-          <!-- 添加话题弹窗 -->
-          <el-dialog
-            v-model="topicDialogVisible"
-            title="添加话题"
-            width="600px"
-            class="topic-dialog"
-          >
-            <div class="topic-dialog-content">
-              <!-- 自定义话题输入 -->
-              <div class="custom-topic-input">
-                <el-input
-                  v-model="customTopic"
-                  placeholder="输入自定义话题"
-                  class="custom-input"
-                >
-                  <template #prepend>#</template>
-                </el-input>
-                <el-button type="primary" @click="addCustomTopic">添加</el-button>
-              </div>
-
-              <!-- 推荐话题 -->
-              <div class="recommended-topics">
-                <h4>推荐话题</h4>
-                <div class="topic-grid">
-                  <el-button
-                    v-for="topic in recommendedTopics"
-                    :key="topic"
-                    :type="currentTab?.selectedTopics?.includes(topic) ? 'primary' : 'default'"
-                    @click="toggleRecommendedTopic(topic)"
-                    class="topic-btn"
-                  >
-                    {{ topic }}
-                  </el-button>
-                </div>
-              </div>
+          <!-- 步骤3: 表单编辑 -->
+          <div v-show="task.currentStep === 'content'" class="step-panel">
+            <div class="step-header">
+              <h4>内容编辑</h4>
+              <p>编辑发布内容的标题、描述等信息</p>
             </div>
 
-            <template #footer>
-              <div class="dialog-footer">
-                <el-button @click="topicDialogVisible = false">取消</el-button>
-                <el-button type="primary" @click="confirmTopicSelection">确定</el-button>
-              </div>
-            </template>
-          </el-dialog>
-
-          <!-- 定时发布 -->
-          <div class="schedule-section">
-            <h3>定时发布</h3>
-            <div class="schedule-controls">
-              <el-switch
-                v-model="tab.scheduleEnabled"
-                active-text="定时发布"
-                inactive-text="立即发布"
-              />
-              <div v-if="tab.scheduleEnabled" class="schedule-settings">
-                <div class="schedule-item">
-                  <span class="label">每天发布视频数：</span>
-                  <el-select v-model="tab.videosPerDay" placeholder="选择发布数量">
-                    <el-option
-                      v-for="num in 55"
-                      :key="num"
-                      :label="num"
-                      :value="num"
-                    />
-                  </el-select>
-                </div>
-                <div class="schedule-item">
-                  <span class="label">每天发布时间：</span>
-                  <el-time-select
-                    v-for="(time, index) in tab.dailyTimes"
-                    :key="index"
-                    v-model="tab.dailyTimes[index]"
-                    start="00:00"
-                    step="00:30"
-                    end="23:30"
-                    placeholder="选择时间"
+            <div class="content-form">
+              <el-form :model="task" label-width="80px" class="publish-form">
+                <!-- 标题 -->
+                <el-form-item label="标题" required>
+                  <el-input
+                    v-model="task.title"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="请输入内容标题"
+                    maxlength="100"
+                    show-word-limit
+                    class="title-input"
                   />
-                  <el-button
-                    v-if="tab.dailyTimes.length < tab.videosPerDay"
-                    type="primary"
-                    size="small"
-                    @click="tab.dailyTimes.push('10:00')"
-                  >
-                    添加时间
-                  </el-button>
+                </el-form-item>
+
+                <!-- 话题标签 -->
+                <el-form-item label="话题">
+                  <div class="topics-section">
+                    <div class="selected-topics">
+                      <el-tag
+                        v-for="(topic, index) in task.topics"
+                        :key="index"
+                        closable
+                        @close="removeTopic(task, index)"
+                        class="topic-tag"
+                      >
+                        #{{ topic }}
+                      </el-tag>
+                    </div>
+                    <el-button size="small" @click="openTopicSelector(task)">
+                      <el-icon><Plus /></el-icon>
+                      添加话题
+                    </el-button>
+                  </div>
+                </el-form-item>
+
+                <!-- 发布设置 -->
+                <el-form-item label="发布设置">
+                  <div class="publish-settings">
+                    <el-switch
+                      v-model="task.scheduleEnabled"
+                      active-text="定时发布"
+                      inactive-text="立即发布"
+                    />
+                    
+                    <div v-if="task.scheduleEnabled" class="schedule-options">
+                      <div class="schedule-row">
+                        <span class="label">发布时间:</span>
+                        <el-date-picker
+                          v-model="task.scheduleTime"
+                          type="datetime"
+                          placeholder="选择发布时间"
+                          format="YYYY-MM-DD HH:mm"
+                          value-format="YYYY-MM-DD HH:mm:ss"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </el-form-item>
+              </el-form>
+            </div>
+          </div>
+
+          <!-- 步骤4: 确认发布 -->
+          <div v-show="task.currentStep === 'confirm'" class="step-panel">
+            <div class="step-header">
+              <h4>确认发布</h4>
+              <p>请确认发布信息无误后提交</p>
+            </div>
+
+            <div class="confirm-content">
+              <!-- 发布预览 -->
+              <div class="publish-preview">
+                <div class="preview-section">
+                  <h5>视频内容</h5>
+                  <div class="videos-preview">
+                    <div 
+                      v-for="(video, index) in task.videos" 
+                      :key="index"
+                      class="video-preview-item"
+                    >
+                      <el-icon class="video-icon"><VideoPlay /></el-icon>
+                      <span>{{ video.name }}</span>
+                    </div>
+                  </div>
                 </div>
-                <div class="schedule-item">
-                  <span class="label">开始天数：</span>
-                  <el-select v-model="tab.startDays" placeholder="选择开始天数">
-                    <el-option :label="'明天'" :value="0" />
-                    <el-option :label="'后天'" :value="1" />
-                  </el-select>
+
+                <div class="preview-section">
+                  <h5>发布账号</h5>
+                  <div class="accounts-preview">
+                    <el-tag
+                      v-for="accountId in task.selectedAccounts"
+                      :key="accountId"
+                      class="account-tag"
+                    >
+                      {{ getAccountName(accountId) }}
+                    </el-tag>
+                  </div>
+                </div>
+
+                <div class="preview-section">
+                  <h5>内容信息</h5>
+                  <div class="content-preview">
+                    <div class="preview-item">
+                      <span class="label">标题:</span>
+                      <span class="value">{{ task.title || '未设置' }}</span>
+                    </div>
+                    <div class="preview-item" v-if="task.topics.length > 0">
+                      <span class="label">话题:</span>
+                      <span class="value">{{ task.topics.map(t => '#' + t).join(' ') }}</span>
+                    </div>
+                    <div class="preview-item">
+                      <span class="label">发布方式:</span>
+                      <span class="value">{{ task.scheduleEnabled ? '定时发布' : '立即发布' }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 发布进度 -->
+              <div v-if="task.publishing" class="publish-progress">
+                <el-progress 
+                  :percentage="task.publishProgress"
+                  :status="task.publishProgress === 100 ? 'success' : ''"
+                />
+                <div class="progress-text">
+                  {{ task.publishProgressText || '准备发布...' }}
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- 操作按钮 -->
-          <div class="action-buttons">
-            <el-button size="small" @click="cancelPublish(tab)">取消</el-button>
-            <el-button size="small" type="primary" @click="confirmPublish(tab)">发布</el-button>
+        <!-- 步骤导航 -->
+        <div class="step-navigation">
+          <div class="nav-left">
+            <el-button 
+              v-if="task.currentStep !== 'video'"
+              @click="previousStep(task)"
+              :disabled="task.publishing"
+            >
+              <el-icon><ArrowLeft /></el-icon>
+              上一步
+            </el-button>
+          </div>
+          <div class="nav-right">
+            <el-button 
+              v-if="task.currentStep !== 'confirm'"
+              type="primary"
+              @click="nextStep(task)"
+              :disabled="!canProceedToNextStep(task)"
+            >
+              下一步
+              <el-icon><ArrowRight /></el-icon>
+            </el-button>
+            <el-button 
+              v-else
+              type="primary"
+              @click="publishTask(task)"
+              :loading="task.publishing"
+              :disabled="!canPublish(task)"
+            >
+              <el-icon><Upload /></el-icon>
+              {{ task.publishing ? '发布中' : '确认发布' }}
+            </el-button>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- 话题选择对话框 -->
+    <el-dialog
+      v-model="topicDialogVisible"
+      title="添加话题"
+      width="600px"
+      class="topic-dialog"
+    >
+      <div class="topic-selector">
+        <div class="custom-topic">
+          <el-input
+            v-model="customTopic"
+            placeholder="输入自定义话题"
+            @keyup.enter="addCustomTopic"
+          >
+            <template #prepend>#</template>
+            <template #append>
+              <el-button @click="addCustomTopic">添加</el-button>
+            </template>
+          </el-input>
+        </div>
+
+        <div class="recommended-topics">
+          <h5>推荐话题</h5>
+          <div class="topics-grid">
+            <el-button
+              v-for="topic in recommendedTopics"
+              :key="topic"
+              size="small"
+              @click="toggleRecommendedTopic(topic)"
+              :type="currentTask?.topics?.includes(topic) ? 'primary' : 'default'"
+            >
+              #{{ topic }}
+            </el-button>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="topicDialogVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
-import { Upload, Plus, Close, Folder } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { 
+  Plus, Upload, CopyDocument, Delete, VideoCamera, Folder,
+  VideoPlay, View, Check, Close, User, ArrowLeft, ArrowRight
+} from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
 import { materialApi } from '@/api/material'
 
-// API base URL
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+// 状态管理
+const accountStore = useAccountStore()
+const appStore = useAppStore()
 
-// Authorization headers
+// API配置
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
 const authHeaders = computed(() => ({
   'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
 }))
 
-// 当前激活的tab
-const activeTab = ref('tab1')
-
-// tab计数器
-let tabCounter = 1
-
-// 获取应用状态管理
-const appStore = useAppStore()
-
-// 上传相关状态
-const uploadOptionsVisible = ref(false)
-const localUploadVisible = ref(false)
-const materialLibraryVisible = ref(false)
-const currentUploadTab = ref(null)
-const selectedMaterials = ref([])
-const materials = computed(() => appStore.materials)
-
-// 批量发布相关状态
-const batchPublishing = ref(false)
-const batchPublishMessage = ref('')
-const batchPublishType = ref('info')
-
-// 平台列表 - 对应后端type字段
-const platforms = [
-  { key: 3, name: '抖音' },
-  { key: 4, name: '快手' },
-  { key: 2, name: '视频号' },
-  { key: 1, name: '小红书' }
+// 步骤配置
+const steps = [
+  { key: 'video', label: '选择视频' },
+  { key: 'accounts', label: '选择账号' },
+  { key: 'content', label: '编辑内容' },
+  { key: 'confirm', label: '确认发布' }
 ]
 
-// tab页数据 - 默认只有一个tab
-const tabs = reactive([
-  {
-    name: 'tab1',
-    label: '发布1',
-    fileList: [], // 后端返回的文件名列表
-    displayFileList: [], // 用于显示的文件列表
-    selectedAccounts: [], // 选中的账号ID列表
-    selectedPlatform: 1, // 选中的平台（单选）
-    title: '',
-    selectedTopics: [], // 话题列表（不带#号）
-    scheduleEnabled: false, // 定时发布开关
-    videosPerDay: 1, // 每天发布视频数量
-    dailyTimes: ['10:00'], // 每天发布时间点列表
-    startDays: 0, // 从今天开始计算的发布天数，0表示明天，1表示后天
-    publishStatus: null // 发布状态，包含message和type
-  }
-])
+// 推荐话题
+const recommendedTopics = [
+  '生活', '美食', '旅行', '科技', '娱乐', '教育',
+  '健康', '时尚', '音乐', '电影', '游戏', '运动'
+]
 
-// 账号相关状态
-const accountDialogVisible = ref(false)
-const tempSelectedAccounts = ref([])
-const currentTab = ref(null)
+// 发布任务列表
+const publishTasks = ref([])
+let taskIdCounter = 1
 
-// 获取账号状态管理
-const accountStore = useAccountStore()
-
-// 根据选择的平台获取可用账号列表
-const availableAccounts = computed(() => {
-  const platformMap = {
-    3: '抖音',
-    2: '视频号',
-    1: '小红书',
-    4: '快手'
-  }
-  const currentPlatform = currentTab.value ? platformMap[currentTab.value.selectedPlatform] : null
-  return currentPlatform ? accountStore.accounts.filter(acc => acc.platform === currentPlatform) : []
-})
-
-// 话题相关状态
+// 对话框状态
 const topicDialogVisible = ref(false)
 const customTopic = ref('')
+const currentTask = ref(null)
 
-// 推荐话题列表
-const recommendedTopics = [
-  '游戏', '电影', '音乐', '美食', '旅行', '文化',
-  '科技', '生活', '娱乐', '体育', '教育', '艺术',
-  '健康', '时尚', '美妆', '摄影', '宠物', '汽车'
-]
+// 可用账号
+const availableAccounts = computed(() => accountStore.accounts)
 
-// 添加新tab
-const addTab = () => {
-  tabCounter++
-  const newTab = {
-    name: `tab${tabCounter}`,
-    label: `发布${tabCounter}`,
-    fileList: [],
-    displayFileList: [],
-    selectedAccounts: [],
-    selectedPlatform: 1,
+// 方法定义
+const addNewPublishTask = () => {
+  const newTask = {
+    id: taskIdCounter++,
     title: '',
-    selectedTopics: [],
+    currentStep: 'video',
+    status: 'draft', // draft, publishing, published, error
+    videos: [],
+    selectedAccounts: [],
+    topics: [],
     scheduleEnabled: false,
-    videosPerDay: 1,
-    dailyTimes: ['10:00'],
-    startDays: 0,
-    publishStatus: null
+    scheduleTime: '',
+    publishing: false,
+    publishProgress: 0,
+    publishProgressText: ''
   }
-  tabs.push(newTab)
-  activeTab.value = newTab.name
+  
+  publishTasks.value.push(newTask)
 }
 
-// 删除tab
-const removeTab = (tabName) => {
-  const index = tabs.findIndex(tab => tab.name === tabName)
-  if (index > -1) {
-    tabs.splice(index, 1)
-    // 如果删除的是当前激活的tab，切换到第一个tab
-    if (activeTab.value === tabName && tabs.length > 0) {
-      activeTab.value = tabs[0].name
-    }
-  }
+const getStepIndex = (stepKey) => {
+  return steps.findIndex(step => step.key === stepKey)
 }
 
-// 处理文件上传成功
-const handleUploadSuccess = (response, file, tab) => {
+const getTaskStatusType = (status) => {
+  const typeMap = {
+    'draft': 'info',
+    'publishing': 'warning',
+    'published': 'success',
+    'error': 'danger'
+  }
+  return typeMap[status] || 'info'
+}
+
+const getTaskStatusText = (status) => {
+  const textMap = {
+    'draft': '草稿',
+    'publishing': '发布中',
+    'published': '已发布',
+    'error': '发布失败'
+  }
+  return textMap[status] || '未知'
+}
+
+const setCurrentStep = (task, stepKey) => {
+  if (task.publishing) return
+  task.currentStep = stepKey
+}
+
+const handleVideoUploadSuccess = (response, file, task) => {
   if (response.code === 200) {
-    // 获取文件路径
     const filePath = response.data.path || response.data
-    // 从路径中提取文件名
     const filename = filePath.split('/').pop()
     
-    // 保存文件信息到fileList，包含文件路径和其他信息
-    const fileInfo = {
+    const videoInfo = {
       name: file.name,
-      url: materialApi.getMaterialPreviewUrl(filename), // 使用getMaterialPreviewUrl生成预览URL
       path: filePath,
+      url: materialApi.getMaterialPreviewUrl(filename),
       size: file.size,
       type: file.type
     }
     
-    // 添加到文件列表
-    tab.fileList.push(fileInfo)
-    
-    // 更新显示列表
-    tab.displayFileList = [...tab.fileList.map(item => ({
-      name: item.name,
-      url: item.url
-    }))]
-    
-    ElMessage.success('文件上传成功')
-    console.log('上传成功:', fileInfo)
+    task.videos.push(videoInfo)
+    ElMessage.success('视频上传成功')
   } else {
     ElMessage.error(response.msg || '上传失败')
   }
 }
 
-// 处理文件上传失败
-const handleUploadError = (error) => {
-  ElMessage.error('文件上传失败')
+const handleVideoUploadError = (error) => {
+  ElMessage.error('视频上传失败')
   console.error('上传错误:', error)
 }
 
-// 删除已上传文件
-const removeFile = (tab, index) => {
-  // 从文件列表中删除
-  tab.fileList.splice(index, 1)
-  
-  // 更新显示列表
-  tab.displayFileList = [...tab.fileList.map(item => ({
-    name: item.name,
-    url: item.url
-  }))]
-  
-  ElMessage.success('文件删除成功')
+const selectFromLibrary = async (task) => {
+  ElMessage.info('素材库功能开发中...')
 }
 
-// 话题相关方法
-// 打开添加话题弹窗
-const openTopicDialog = (tab) => {
-  currentTab.value = tab
+const addMoreVideos = (task) => {
+  selectFromLibrary(task)
+}
+
+const removeVideo = (task, index) => {
+  task.videos.splice(index, 1)
+}
+
+const previewVideo = (video) => {
+  window.open(video.url, '_blank')
+}
+
+const toggleAccountSelection = (task, account) => {
+  if (account.status !== '正常') return
+  
+  const index = task.selectedAccounts.indexOf(account.id)
+  if (index > -1) {
+    task.selectedAccounts.splice(index, 1)
+  } else {
+    task.selectedAccounts.push(account.id)
+  }
+}
+
+const clearAccountSelection = (task) => {
+  task.selectedAccounts = []
+}
+
+const getAccountName = (accountId) => {
+  const account = accountStore.accounts.find(acc => acc.id === accountId)
+  return account ? account.name : accountId
+}
+
+const openTopicSelector = (task) => {
+  currentTask.value = task
+  customTopic.value = ''
   topicDialogVisible.value = true
 }
 
-// 添加自定义话题
 const addCustomTopic = () => {
   if (!customTopic.value.trim()) {
     ElMessage.warning('请输入话题内容')
     return
   }
-  if (currentTab.value && !currentTab.value.selectedTopics.includes(customTopic.value.trim())) {
-    currentTab.value.selectedTopics.push(customTopic.value.trim())
+  
+  if (currentTask.value && !currentTask.value.topics.includes(customTopic.value.trim())) {
+    currentTask.value.topics.push(customTopic.value.trim())
     customTopic.value = ''
     ElMessage.success('话题添加成功')
   } else {
@@ -649,681 +608,824 @@ const addCustomTopic = () => {
   }
 }
 
-// 切换推荐话题
 const toggleRecommendedTopic = (topic) => {
-  if (!currentTab.value) return
+  if (!currentTask.value) return
   
-  const index = currentTab.value.selectedTopics.indexOf(topic)
+  const index = currentTask.value.topics.indexOf(topic)
   if (index > -1) {
-    currentTab.value.selectedTopics.splice(index, 1)
+    currentTask.value.topics.splice(index, 1)
   } else {
-    currentTab.value.selectedTopics.push(topic)
+    currentTask.value.topics.push(topic)
   }
 }
 
-// 删除话题
-const removeTopic = (tab, index) => {
-  tab.selectedTopics.splice(index, 1)
+const removeTopic = (task, index) => {
+  task.topics.splice(index, 1)
 }
 
-// 确认添加话题
-const confirmTopicSelection = () => {
-  topicDialogVisible.value = false
-  customTopic.value = ''
-  currentTab.value = null
-  ElMessage.success('添加话题完成')
-}
-
-// 账号选择相关方法
-// 打开账号选择弹窗
-const openAccountDialog = (tab) => {
-  currentTab.value = tab
-  tempSelectedAccounts.value = [...tab.selectedAccounts]
-  accountDialogVisible.value = true
-}
-
-// 确认账号选择
-const confirmAccountSelection = () => {
-  if (currentTab.value) {
-    currentTab.value.selectedAccounts = [...tempSelectedAccounts.value]
+const canProceedToNextStep = (task) => {
+  switch (task.currentStep) {
+    case 'video':
+      return task.videos.length > 0
+    case 'accounts':
+      return task.selectedAccounts.length > 0
+    case 'content':
+      return task.title.trim().length > 0
+    default:
+      return true
   }
-  accountDialogVisible.value = false
-  currentTab.value = null
-  ElMessage.success('账号选择完成')
 }
 
-// 删除选中的账号
-const removeAccount = (tab, index) => {
-  tab.selectedAccounts.splice(index, 1)
+const canPublish = (task) => {
+  return task.videos.length > 0 && 
+         task.selectedAccounts.length > 0 && 
+         task.title.trim().length > 0
 }
 
-// 获取账号显示名称
-const getAccountDisplayName = (accountId) => {
-  const account = accountStore.accounts.find(acc => acc.id === accountId)
-  return account ? account.name : accountId
-}
-
-// 取消发布
-const cancelPublish = (tab) => {
-  ElMessage.info('已取消发布')
-}
-
-// 确认发布
-const confirmPublish = async (tab) => {
-  return new Promise((resolve, reject) => {
-    // 数据验证
-    if (tab.fileList.length === 0) {
-      ElMessage.error('请先上传视频文件')
-      reject(new Error('请先上传视频文件'))
-      return
-    }
-    if (!tab.title.trim()) {
-      ElMessage.error('请输入标题')
-      reject(new Error('请输入标题'))
-      return
-    }
-    if (!tab.selectedPlatform) {
-      ElMessage.error('请选择发布平台')
-      reject(new Error('请选择发布平台'))
-      return
-    }
-    if (tab.selectedAccounts.length === 0) {
-      ElMessage.error('请选择发布账号')
-      reject(new Error('请选择发布账号'))
-      return
-    }
-    
-    // 构造发布数据，符合后端API格式
-    const publishData = {
-      type: tab.selectedPlatform,
-      title: tab.title,
-      tags: tab.selectedTopics, // 不带#号的话题列表
-      fileList: tab.fileList.map(file => file.path), // 只发送文件路径
-      accountList: tab.selectedAccounts.map(accountId => {
-        const account = accountStore.accounts.find(acc => acc.id === accountId)
-        return account ? account.filePath : accountId
-      }), // 发送账号的文件路径
-      enableTimer: tab.scheduleEnabled ? 1 : 0, // 是否启用定时发布，开启传1，不开启传0
-      videosPerDay: tab.scheduleEnabled ? tab.videosPerDay || 1 : 1, // 每天发布视频数量，1-55
-      dailyTimes: tab.scheduleEnabled ? tab.dailyTimes || ['10:00'] : ['10:00'], // 每天发布时间点
-      startDays: tab.scheduleEnabled ? tab.startDays || 0 : 0, // 从今天开始计算的发布天数，0表示明天，1表示后天
-      category: 0 //表示非原创
-    }
-    
-    // 调用后端发布API
-    fetch(`${apiBaseUrl}/postVideo`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders.value
-      },
-      body: JSON.stringify(publishData)
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.code === 200) {
-        tab.publishStatus = {
-          message: '发布成功',
-          type: 'success'
-        }
-        // 清空当前tab的数据
-        tab.fileList = []
-        tab.displayFileList = []
-        tab.title = ''
-        tab.selectedTopics = []
-        tab.selectedAccounts = []
-        tab.scheduleEnabled = false
-        resolve()
-      } else {
-        tab.publishStatus = {
-          message: `发布失败：${data.msg || '发布失败'}`,
-          type: 'error'
-        }
-        reject(new Error(data.msg || '发布失败'))
-      }
-    })
-    .catch(error => {
-      console.error('发布错误:', error)
-      tab.publishStatus = {
-        message: '发布失败，请检查网络连接',
-        type: 'error'
-      }
-      reject(error)
-    })
-  })
-}
-
-// 显示上传选项
-const showUploadOptions = (tab) => {
-  currentUploadTab.value = tab
-  uploadOptionsVisible.value = true
-}
-
-// 选择本地上传
-const selectLocalUpload = () => {
-  uploadOptionsVisible.value = false
-  localUploadVisible.value = true
-}
-
-// 选择素材库
-const selectMaterialLibrary = async () => {
-  uploadOptionsVisible.value = false
-  
-  // 如果素材库为空，先获取素材数据
-  if (materials.value.length === 0) {
-    try {
-      const response = await materialApi.getAllMaterials()
-      if (response.code === 200) {
-        appStore.setMaterials(response.data)
-      } else {
-        ElMessage.error('获取素材列表失败')
-        return
-      }
-    } catch (error) {
-      console.error('获取素材列表出错:', error)
-      ElMessage.error('获取素材列表失败')
-      return
-    }
+const nextStep = (task) => {
+  const currentIndex = getStepIndex(task.currentStep)
+  if (currentIndex < steps.length - 1) {
+    task.currentStep = steps[currentIndex + 1].key
   }
-  
-  selectedMaterials.value = []
-  materialLibraryVisible.value = true
 }
 
-// 确认素材选择
-const confirmMaterialSelection = () => {
-  if (selectedMaterials.value.length === 0) {
-    ElMessage.warning('请选择至少一个素材')
-    return
+const previousStep = (task) => {
+  const currentIndex = getStepIndex(task.currentStep)
+  if (currentIndex > 0) {
+    task.currentStep = steps[currentIndex - 1].key
   }
-  
-  if (currentUploadTab.value) {
-    // 将选中的素材添加到当前tab的文件列表
-    selectedMaterials.value.forEach(materialId => {
-      const material = materials.value.find(m => m.id === materialId)
-      if (material) {
-        const fileInfo = {
-          name: material.filename,
-          url: materialApi.getMaterialPreviewUrl(material.file_path.split('/').pop()),
-          path: material.file_path,
-          size: material.filesize * 1024 * 1024, // 转换为字节
-          type: 'video/mp4'
-        }
-        
-        // 检查是否已存在相同文件
-        const exists = currentUploadTab.value.fileList.some(file => file.path === fileInfo.path)
-        if (!exists) {
-          currentUploadTab.value.fileList.push(fileInfo)
-        }
-      }
-    })
-    
-    // 更新显示列表
-    currentUploadTab.value.displayFileList = [...currentUploadTab.value.fileList.map(item => ({
-      name: item.name,
-      url: item.url
-    }))]
-  }
-  
-  const addedCount = selectedMaterials.value.length
-  materialLibraryVisible.value = false
-  selectedMaterials.value = []
-  currentUploadTab.value = null
-  ElMessage.success(`已添加 ${addedCount} 个素材`)
 }
 
-// 批量发布对话框状态
-const batchPublishDialogVisible = ref(false)
-const currentPublishingTab = ref(null)
-const publishProgress = ref(0)
-const publishResults = ref([])
-const isCancelled = ref(false)
-
-// 取消批量发布
-const cancelBatchPublish = () => {
-  isCancelled.value = true
-  ElMessage.info('正在取消发布...')
-}
-
-// 批量发布方法
-const batchPublish = async () => {
-  if (batchPublishing.value) return
+const publishTask = async (task) => {
+  if (task.publishing) return
   
-  batchPublishing.value = true
-  currentPublishingTab.value = null
-  publishProgress.value = 0
-  publishResults.value = []
-  isCancelled.value = false
-  batchPublishDialogVisible.value = true
+  task.publishing = true
+  task.publishProgress = 0
+  task.publishProgressText = '准备发布...'
+  task.status = 'publishing'
   
   try {
-    for (let i = 0; i < tabs.length; i++) {
-      if (isCancelled.value) {
-        publishResults.value.push({
-          label: tabs[i].label,
-          status: 'cancelled',
-          message: '已取消'
-        })
-        continue
-      }
-
-      const tab = tabs[i]
-      currentPublishingTab.value = tab
-      publishProgress.value = Math.floor((i / tabs.length) * 100)
-      
-      try {
-        await confirmPublish(tab)
-        publishResults.value.push({
-          label: tab.label,
-          status: 'success',
-          message: '发布成功'
-        })
-      } catch (error) {
-        publishResults.value.push({
-          label: tab.label,
-          status: 'error',
-          message: error.message
-        })
-        // 不立即返回，继续显示发布结果
-      }
-    }
+    // 模拟发布过程
+    task.publishProgressText = '正在发布...'
+    task.publishProgress = 50
     
-    publishProgress.value = 100
-    
-    // 统计发布结果
-    const successCount = publishResults.value.filter(r => r.status === 'success').length
-    const failCount = publishResults.value.filter(r => r.status === 'error').length
-    const cancelCount = publishResults.value.filter(r => r.status === 'cancelled').length
-    
-    if (isCancelled.value) {
-      ElMessage.warning(`发布已取消：${successCount}个成功，${failCount}个失败，${cancelCount}个未执行`)
-    } else if (failCount > 0) {
-      ElMessage.error(`发布完成：${successCount}个成功，${failCount}个失败`)
-    } else {
-      ElMessage.success('所有Tab发布成功')
-      setTimeout(() => {
-        batchPublishDialogVisible.value = false
-      }, 1000)
-    }
+    // 这里应该调用实际的发布API
+    setTimeout(() => {
+      task.publishProgress = 100
+      task.publishProgressText = '发布成功'
+      task.status = 'published'
+      task.publishing = false
+      ElMessage.success('发布成功')
+    }, 2000)
     
   } catch (error) {
-    console.error('批量发布出错:', error)
-    ElMessage.error('批量发布出错，请重试')
-  } finally {
-    batchPublishing.value = false
-    isCancelled.value = false
+    console.error('发布错误:', error)
+    task.status = 'error'
+    task.publishProgressText = '发布失败'
+    task.publishing = false
+    ElMessage.error('发布失败')
   }
 }
+
+const duplicateTask = (task) => {
+  const duplicatedTask = {
+    ...JSON.parse(JSON.stringify(task)),
+    id: taskIdCounter++,
+    status: 'draft',
+    publishing: false,
+    publishProgress: 0,
+    publishProgressText: ''
+  }
+  
+  publishTasks.value.push(duplicatedTask)
+  ElMessage.success('任务复制成功')
+}
+
+const deleteTask = (task) => {
+  ElMessageBox.confirm(
+    '确定要删除这个发布任务吗？',
+    '删除确认',
+    {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    const index = publishTasks.value.indexOf(task)
+    if (index > -1) {
+      publishTasks.value.splice(index, 1)
+      ElMessage.success('任务删除成功')
+    }
+  }).catch(() => {})
+}
+
+const formatFileSize = (size) => {
+  const mb = size / (1024 * 1024)
+  return mb.toFixed(1) + 'MB'
+}
+
+// 初始化
+onMounted(() => {
+  // 创建一个默认任务
+  addNewPublishTask()
+})
 </script>
 
 <style lang="scss" scoped>
-@use '@/styles/variables.scss' as *;
+// 变量定义
+$primary: #5B73DE;
+$success: #10B981;
+$warning: #F59E0B;
+$danger: #EF4444;
+$info: #6B7280;
+
+$bg-light: #F8FAFC;
+$bg-white: #FFFFFF;
+$bg-gray: #F1F5F9;
+
+$text-primary: #1E293B;
+$text-secondary: #64748B;
+$text-muted: #94A3B8;
+
+$border-light: #E2E8F0;
+$shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 12px;
+$radius-xl: 16px;
+$radius-2xl: 24px;
+
+$space-xs: 4px;
+$space-sm: 8px;
+$space-md: 16px;
+$space-lg: 24px;
+$space-xl: 32px;
+$space-2xl: 48px;
 
 .publish-center {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+// 页面头部
+.page-header {
+  margin-bottom: $space-lg;
+
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+
+    .header-left {
+      .page-title {
+        font-size: 28px;
+        font-weight: 700;
+        color: $text-primary;
+        margin: 0 0 $space-xs 0;
+      }
+
+      .page-subtitle {
+        font-size: 16px;
+        color: $text-secondary;
+        margin: 0;
+      }
+    }
+
+    .header-actions {
+      .add-task-btn {
+        padding: 12px 24px;
+        font-weight: 600;
+        border-radius: $radius-lg;
+        box-shadow: $shadow-md;
+        transition: all 0.3s ease;
+
+        &:hover {
+          transform: translateY(-2px);
+          box-shadow: $shadow-lg;
+        }
+      }
+    }
+  }
+}
+
+// 发布任务卡片
+.publish-tasks {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  
-  // Tab管理区域
-  .tab-management {
-    background-color: #fff;
-    border-radius: 4px;
-    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-    margin-bottom: 20px;
-    padding: 15px 20px;
-    
-    .tab-header {
+  gap: $space-lg;
+}
+
+.publish-task-card {
+  background: $bg-white;
+  border-radius: $radius-xl;
+  padding: $space-xl;
+  box-shadow: $shadow-md;
+  transition: all 0.3s ease;
+
+  &:hover {
+    box-shadow: $shadow-lg;
+  }
+
+  // 任务头部
+  .task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: $space-lg;
+
+    .task-info {
+      .task-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: $text-primary;
+        margin: 0 0 $space-sm 0;
+      }
+    }
+
+    .task-actions {
       display: flex;
-      align-items: flex-start;
-      gap: 15px;
-      
-      .tab-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        flex: 1;
-        min-width: 0;
-        
-        .tab-item {
-           display: flex;
-           align-items: center;
-           gap: 6px;
-           padding: 6px 12px;
-           background-color: #f5f7fa;
-           border: 1px solid #dcdfe6;
-           border-radius: 4px;
-           cursor: pointer;
-           transition: all 0.3s;
-           font-size: 14px;
-           height: 32px;
-           
-           &:hover {
-             background-color: #ecf5ff;
-             border-color: #b3d8ff;
-           }
-           
-           &.active {
-             background-color: #409eff;
-             border-color: #409eff;
-             color: #fff;
-             
-             .close-icon {
-               color: #fff;
-               
-               &:hover {
-                 background-color: rgba(255, 255, 255, 0.2);
-               }
-             }
-           }
-           
-           .close-icon {
-             padding: 2px;
-             border-radius: 2px;
-             cursor: pointer;
-             transition: background-color 0.3s;
-             font-size: 12px;
-             
-             &:hover {
-               background-color: rgba(0, 0, 0, 0.1);
-             }
-           }
-         }
-       }
-       
-      .tab-actions {
-        display: flex;
-        gap: 10px;
-        flex-shrink: 0;
-        
-        .add-tab-btn,
-        .batch-publish-btn {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          height: 32px;
-          padding: 6px 12px;
-          font-size: 14px;
-          white-space: nowrap;
-        }
-      }
-    }
-  }
-  
-  // 批量发布进度对话框样式
-  .publish-progress {
-    padding: 20px;
-    
-    .current-publishing {
-      margin: 15px 0;
-      text-align: center;
-      color: #606266;
-    }
-
-    .publish-results {
-      margin-top: 20px;
-      border-top: 1px solid #EBEEF5;
-      padding-top: 15px;
-      max-height: 300px;
-      overflow-y: auto;
-
-      .result-item {
-        display: flex;
-        align-items: center;
-        padding: 8px 0;
-        color: #606266;
-
-        .el-icon {
-          margin-right: 8px;
-        }
-
-        .label {
-          margin-right: 10px;
-          font-weight: 500;
-        }
-
-        .message {
-          color: #909399;
-        }
-
-        &.success {
-          color: #67C23A;
-        }
-
-        &.error {
-          color: #F56C6C;
-        }
-
-        &.cancelled {
-          color: #909399;
-        }
-      }
+      gap: $space-sm;
     }
   }
 
-  .dialog-footer {
-    text-align: right;
-  }
-  
-  // 内容区域
-  .publish-content {
-    flex: 1;
-    background-color: #fff;
-    border-radius: 4px;
-    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-    padding: 20px;
-    
-    .tab-content-wrapper {
-      display: flex;
-      justify-content: center;
-      
-      .tab-content {
-        width: 100%;
-        max-width: 800px;
-        
-        h3 {
-          font-size: 16px;
-          font-weight: 500;
-          color: $text-primary;
-          margin: 0 0 10px 0;
-        }
-        
-        .upload-section,
-        .account-section,
-        .platform-section,
-        .title-section,
-        .topic-section,
-        .schedule-section {
-          margin-bottom: 30px;
-        }
-        
-        .video-upload {
-          width: 100%;
-          
-          :deep(.el-upload-dragger) {
-            width: 100%;
-            height: 180px;
-          }
-        }
-        
-        .account-input {
-          max-width: 400px;
-        }
-        
-        .platform-buttons {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          
-          .platform-btn {
-            min-width: 80px;
-          }
-        }
-        
-        .title-input {
-          max-width: 600px;
-        }
-        
-        .topic-display {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          
-          .selected-topics {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            min-height: 32px;
-            
-            .topic-tag {
-              font-size: 14px;
-            }
-          }
-          
-          .select-topic-btn {
-            align-self: flex-start;
-          }
-        }
-        
-        .schedule-controls {
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
+  // 进度指示器
+  .progress-steps {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: $space-2xl;
+    position: relative;
 
-          .schedule-settings {
-            margin-top: 15px;
-            padding: 15px;
-            background-color: #f5f7fa;
-            border-radius: 4px;
-
-            .schedule-item {
-              display: flex;
-              align-items: center;
-              margin-bottom: 15px;
-
-              &:last-child {
-                margin-bottom: 0;
-              }
-
-              .label {
-                min-width: 120px;
-                margin-right: 10px;
-              }
-
-              .el-time-select {
-                margin-right: 10px;
-              }
-
-              .el-button {
-                margin-left: 10px;
-              }
-            }
-          }
-        }
-        
-        .action-buttons {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          margin-top: 30px;
-          padding-top: 20px;
-          border-top: 1px solid #ebeef5;
-        }
-      }
+    &::before {
+      content: '';
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      right: 20px;
+      height: 2px;
+      background-color: $border-light;
+      z-index: 1;
     }
-  }
-  
-  // 已上传文件列表样式
-  .uploaded-files {
-    margin-top: 20px;
-    
-    h4 {
-      font-size: 16px;
-      font-weight: 500;
-      margin-bottom: 12px;
-      color: #303133;
-    }
-    
-    .file-list {
+
+    .step-item {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      
-      .file-item {
+      align-items: center;
+      gap: $space-sm;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      z-index: 2;
+
+      .step-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background-color: $bg-white;
+        border: 2px solid $border-light;
         display: flex;
         align-items: center;
-        padding: 10px 15px;
-        background-color: #f5f7fa;
-        border-radius: 4px;
-        
-        .el-link {
-          margin-right: 10px;
-          max-width: 300px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+        justify-content: center;
+        font-weight: 600;
+        color: $text-muted;
+        transition: all 0.3s ease;
+      }
+
+      .step-label {
+        font-size: 14px;
+        color: $text-muted;
+        font-weight: 500;
+        transition: all 0.3s ease;
+      }
+
+      &.active {
+        .step-circle {
+          background-color: $primary;
+          border-color: $primary;
+          color: white;
         }
-        
-        .file-size {
-          color: #909399;
-          font-size: 13px;
-          margin-right: auto;
+
+        .step-label {
+          color: $primary;
+          font-weight: 600;
+        }
+      }
+
+      &.completed {
+        .step-circle {
+          background-color: $success;
+          border-color: $success;
+          color: white;
+        }
+
+        .step-label {
+          color: $success;
+        }
+      }
+
+      &.error {
+        .step-circle {
+          background-color: $danger;
+          border-color: $danger;
+          color: white;
+        }
+
+        .step-label {
+          color: $danger;
         }
       }
     }
   }
-  
-  // 添加话题弹窗样式
-  .topic-dialog {
-    .topic-dialog-content {
-      .custom-topic-input {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 24px;
-        
-        .custom-input {
-          flex: 1;
+
+  // 步骤内容
+  .step-content {
+    min-height: 400px;
+    margin-bottom: $space-xl;
+  }
+
+  .step-panel {
+    .step-header {
+      margin-bottom: $space-lg;
+
+      h4 {
+        font-size: 18px;
+        font-weight: 600;
+        color: $text-primary;
+        margin: 0 0 $space-xs 0;
+      }
+
+      p {
+        color: $text-secondary;
+        margin: 0;
+      }
+    }
+  }
+
+  // 上传区域
+  .upload-section {
+    .upload-area {
+      .video-uploader {
+        width: 100%;
+
+        :deep(.el-upload-dragger) {
+          width: 100%;
+          height: 200px;
+          border: 2px dashed $border-light;
+          border-radius: $radius-xl;
+          background-color: $bg-gray;
+          transition: all 0.3s ease;
+
+          &:hover {
+            border-color: $primary;
+            background-color: rgba(91, 115, 222, 0.05);
+          }
+        }
+
+        .upload-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: $space-md;
+
+          .upload-icon {
+            font-size: 48px;
+            color: $primary;
+          }
+
+          .upload-text {
+            text-align: center;
+
+            .upload-hint {
+              color: $text-secondary;
+              font-size: 14px;
+
+              em {
+                color: $primary;
+                font-style: normal;
+              }
+            }
+          }
         }
       }
-      
-      .recommended-topics {
-        h4 {
-          margin: 0 0 16px 0;
-          font-size: 16px;
-          font-weight: 500;
-          color: #303133;
+
+      .upload-options {
+        margin-top: $space-lg;
+        text-align: center;
+
+        .library-btn {
+          padding: 12px 24px;
+          border-radius: $radius-lg;
         }
-        
-        .topic-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-          gap: 12px;
-          
-          .topic-btn {
-            height: 36px;
-            font-size: 14px;
-            border-radius: 6px;
-            min-width: 100px;
-            padding: 0 12px;
-            white-space: nowrap;
-            text-align: center;
+      }
+    }
+
+    .selected-videos {
+      .videos-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: $space-md;
+
+        h5 {
+          font-size: 16px;
+          font-weight: 600;
+          color: $text-primary;
+          margin: 0;
+        }
+      }
+
+      .videos-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: $space-md;
+
+        .video-item {
+          background: $bg-gray;
+          border-radius: $radius-lg;
+          overflow: hidden;
+          transition: all 0.3s ease;
+
+          &:hover {
+            transform: translateY(-2px);
+            box-shadow: $shadow-md;
+
+            .video-overlay {
+              opacity: 1;
+            }
+          }
+
+          .video-preview {
+            height: 120px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             display: flex;
             align-items: center;
             justify-content: center;
-            
-            &.el-button--primary {
-              background-color: #409eff;
-              border-color: #409eff;
+            position: relative;
+
+            .video-icon {
+              font-size: 32px;
               color: white;
+            }
+
+            .video-overlay {
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: rgba(0, 0, 0, 0.7);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: $space-sm;
+              opacity: 0;
+              transition: opacity 0.3s ease;
+            }
+          }
+
+          .video-info {
+            padding: $space-md;
+
+            .video-name {
+              font-weight: 500;
+              color: $text-primary;
+              margin-bottom: $space-xs;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+
+            .video-size {
+              font-size: 12px;
+              color: $text-secondary;
             }
           }
         }
       }
     }
-    
-    .dialog-footer {
+  }
+
+  // 账号选择
+  .accounts-section {
+    .accounts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: $space-md;
+      margin-bottom: $space-lg;
+
+      .account-card {
+        background: $bg-gray;
+        border: 2px solid transparent;
+        border-radius: $radius-lg;
+        padding: $space-md;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+
+        &:hover {
+          transform: translateY(-2px);
+          box-shadow: $shadow-md;
+        }
+
+        &.selected {
+          border-color: $primary;
+          background-color: rgba(91, 115, 222, 0.05);
+        }
+
+        &.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .account-avatar {
+          display: flex;
+          justify-content: center;
+          margin-bottom: $space-md;
+          position: relative;
+
+          .status-dot {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid white;
+
+            &.online {
+              background-color: $success;
+            }
+
+            &.offline {
+              background-color: $danger;
+            }
+          }
+
+          .selected-mark {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 20px;
+            height: 20px;
+            background-color: $primary;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+          }
+        }
+
+        .account-info {
+          text-align: center;
+
+          .account-name {
+            font-weight: 500;
+            color: $text-primary;
+            margin-bottom: $space-xs;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .account-platform {
+            font-size: 12px;
+            color: $text-secondary;
+          }
+        }
+      }
+    }
+
+    .selected-summary {
       display: flex;
-      justify-content: flex-end;
-      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(91, 115, 222, 0.1);
+      padding: $space-md;
+      border-radius: $radius-lg;
+
+      .summary-info {
+        display: flex;
+        align-items: center;
+        gap: $space-sm;
+        color: $primary;
+        font-weight: 500;
+      }
+    }
+  }
+
+  // 内容表单
+  .content-form {
+    .publish-form {
+      .title-input {
+        :deep(.el-textarea__inner) {
+          border-radius: $radius-md;
+        }
+      }
+
+      .topics-section {
+        .selected-topics {
+          display: flex;
+          flex-wrap: wrap;
+          gap: $space-sm;
+          margin-bottom: $space-md;
+          min-height: 32px;
+
+          .topic-tag {
+            border-radius: $radius-md;
+          }
+        }
+      }
+
+      .publish-settings {
+        .schedule-options {
+          margin-top: $space-md;
+          padding: $space-md;
+          background: $bg-gray;
+          border-radius: $radius-md;
+
+          .schedule-row {
+            display: flex;
+            align-items: center;
+            gap: $space-md;
+
+            .label {
+              min-width: 80px;
+              font-weight: 500;
+              color: $text-primary;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 确认发布
+  .confirm-content {
+    .publish-preview {
+      background: $bg-gray;
+      border-radius: $radius-lg;
+      padding: $space-lg;
+      margin-bottom: $space-lg;
+
+      .preview-section {
+        &:not(:last-child) {
+          margin-bottom: $space-lg;
+          padding-bottom: $space-lg;
+          border-bottom: 1px solid $border-light;
+        }
+
+        h5 {
+          font-size: 16px;
+          font-weight: 600;
+          color: $text-primary;
+          margin: 0 0 $space-md 0;
+        }
+
+        .videos-preview {
+          display: flex;
+          flex-wrap: wrap;
+          gap: $space-sm;
+
+          .video-preview-item {
+            display: flex;
+            align-items: center;
+            gap: $space-xs;
+            background: $bg-white;
+            padding: $space-sm $space-md;
+            border-radius: $radius-md;
+            font-size: 14px;
+
+            .video-icon {
+              color: $primary;
+            }
+          }
+        }
+
+        .accounts-preview {
+          display: flex;
+          flex-wrap: wrap;
+          gap: $space-sm;
+
+          .account-tag {
+            border-radius: $radius-md;
+          }
+        }
+
+        .content-preview {
+          .preview-item {
+            display: flex;
+            margin-bottom: $space-sm;
+
+            &:last-child {
+              margin-bottom: 0;
+            }
+
+            .label {
+              min-width: 80px;
+              font-weight: 500;
+              color: $text-secondary;
+            }
+
+            .value {
+              color: $text-primary;
+            }
+          }
+        }
+      }
+    }
+
+    .publish-progress {
+      text-align: center;
+      padding: $space-lg;
+
+      .progress-text {
+        margin-top: $space-md;
+        color: $text-secondary;
+      }
+    }
+  }
+
+  // 步骤导航
+  .step-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: $space-lg;
+    border-top: 1px solid $border-light;
+
+    .nav-left, .nav-right {
+      display: flex;
+      gap: $space-sm;
+    }
+  }
+}
+
+// 话题选择对话框
+.topic-dialog {
+  .topic-selector {
+    .custom-topic {
+      margin-bottom: $space-lg;
+    }
+
+    .recommended-topics {
+      h5 {
+        font-size: 16px;
+        font-weight: 600;
+        color: $text-primary;
+        margin: 0 0 $space-md 0;
+      }
+
+      .topics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: $space-sm;
+      }
+    }
+  }
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  .page-header .header-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: $space-md;
+  }
+
+  .publish-task-card {
+    padding: $space-lg;
+
+    .task-header {
+      flex-direction: column;
+      gap: $space-md;
+    }
+
+    .progress-steps {
+      flex-direction: column;
+      gap: $space-md;
+
+      &::before {
+        display: none;
+      }
+
+      .step-item {
+        flex-direction: row;
+        justify-content: flex-start;
+      }
+    }
+
+    .accounts-section {
+      .accounts-grid {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
+    .step-navigation {
+      flex-direction: column;
+      gap: $space-md;
     }
   }
 }
