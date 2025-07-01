@@ -71,10 +71,16 @@ async def main():
     if args.action == 'upload':
         if not exists(args.video_file):
             raise FileNotFoundError(f'Could not find the video file at {args["video_file"]}')
+        video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v', '.3gp', '.3g2'}
+        file_ext = Path(args.video_file).suffix.lower()
+        if file_ext not in video_extensions:
+            print(f"警告：{file_ext} 可能不是支持的视频格式")
         if args.publish_type == 1 and not args.schedule:
             parser.error("The schedule must must be specified for scheduled publishing.")
-
-
+        try:
+            title, tags = get_title_and_hashtags(args.video_file, args.title, args.tags)
+        except ValueError as e:
+            parser.error(str(e))
 
     account_file = get_account_file_from_db(args)
     #account_file = Path(BASE_DIR / "cookies" / f"{args.platform}_{args.account_name}.json")

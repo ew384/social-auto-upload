@@ -13,7 +13,7 @@ from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
 import threading
 import time
-
+from utils.video_utils import is_video_file
 # 导入现有的上传模块
 from cli_main import main as cli_main
 import sys
@@ -23,7 +23,12 @@ app = Flask(__name__)
 # 配置
 app.config['JSON_AS_ASCII'] = False
 UPLOAD_FOLDER = './temp_uploads'
-ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'}
+
+ALLOWED_EXTENSIONS = {
+    'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'webm', 
+    'm4v', '3gp', '3g2', 'f4v', 'asf', 'rm', 'rmvb',
+    'vob', 'mpg', 'mpeg', 'mpe', 'mpv', 'm2v'
+}
 MAX_CONTENT_LENGTH = 500 * 1024 * 1024  # 500MB
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -36,7 +41,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 task_status = {}
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return is_video_file(filename)
 
 class UploadTask:
     def __init__(self, task_id, platform, account, video_file, title, description, publish_type=0, schedule=None):

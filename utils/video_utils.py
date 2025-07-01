@@ -1,17 +1,23 @@
-import os
+# utils/video_utils.py
 from pathlib import Path
 
-SUPPORTED_VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.webm'}
+def is_video_file(filename):
+    """检查文件是否为视频格式"""
+    video_extensions = {
+        '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', 
+        '.m4v', '.3gp', '.3g2', '.f4v', '.asf', '.rm', '.rmvb',
+        '.vob', '.mpg', '.mpeg', '.mpe', '.mpv', '.m2v', '.m4p',
+        '.ogv', '.ogg', '.dv', '.qt', '.yuv', '.divx', '.xvid'
+    }
+    return Path(filename).suffix.lower() in video_extensions
 
-def is_video_file(file_path):
-    """检查文件是否为支持的视频格式"""
-    return Path(file_path).suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS
-
-def get_video_files(folder_path):
-    """获取文件夹中所有支持的视频文件"""
-    folder = Path(folder_path)
+def get_video_files(directory_path):
+    """获取目录中的所有视频文件"""
+    directory = Path(directory_path)
     video_files = []
-    for file in folder.iterdir():
-        if file.is_file() and is_video_file(file):
-            video_files.append(file)
-    return video_files
+    
+    for file_path in directory.iterdir():
+        if file_path.is_file() and is_video_file(file_path.name):
+            video_files.append(file_path)
+    
+    return sorted(video_files)

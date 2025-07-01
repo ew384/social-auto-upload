@@ -5,12 +5,17 @@ from pathlib import Path
 
 from conf import BASE_DIR
 
+def get_video_extension(filename):
+    """获取视频文件的扩展名"""
+    return Path(filename).suffix.lower()
 
+def get_txt_filename(video_filename):
+    """根据视频文件名生成对应的txt文件名"""
+    return str(Path(video_filename).with_suffix('.txt'))
 def get_absolute_path(relative_path: str, base_dir: str = None) -> str:
     # Convert the relative path to an absolute path
     absolute_path = Path(BASE_DIR) / base_dir / relative_path
     return str(absolute_path)
-
 
 def get_title_and_hashtags(filename, title_override=None, tags_override=None):
     """
@@ -24,26 +29,59 @@ def get_title_and_hashtags(filename, title_override=None, tags_override=None):
     Returns:
         视频标题和 hashtag 列表
     """
+    import os
     
     # 如果提供了覆盖参数，直接使用
     if title_override and tags_override:
         hashtags = tags_override.replace("#", "").split()
         return title_override, hashtags
     
-    # 原有的文件读取逻辑
-    txt_filename = filename.replace(".mp4", ".txt")
+    # 使用新的工具函数生成txt文件名（支持所有视频格式）
+    txt_filename = get_txt_filename(filename)
     
-    with open(txt_filename, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    splite_str = content.strip().split("\n")
-    title = title_override if title_override else splite_str[0]
+    # 初始化变量
+    title = title_override if title_override else ""
+    hashtags = []
     
     if tags_override:
         hashtags = tags_override.replace("#", "").split()
-    else:
-        hashtags = splite_str[1].replace("#", "").split(" ")
-
+    
+    # 如果已经有完整信息，直接返回
+    if title and hashtags:
+        return title, hashtags
+    
+    # 尝试从txt文件读取缺失的信息
+    if os.path.exists(txt_filename):
+        try:
+            # 尝试多种编码读取文件
+            content = None
+            for encoding in ['utf-8', 'gbk', 'gb2312', 'utf-8-sig']:
+                try:
+                    with open(txt_filename, "r", encoding=encoding) as f:
+                        content = f.read()
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if content:
+                splite_str = content.strip().split("\n")
+                if not title and len(splite_str) > 0:
+                    title = splite_str[0]
+                
+                if not hashtags and len(splite_str) > 1:
+                    hashtags = splite_str[1].replace("#", "").split(" ")
+                    
+        except Exception as e:
+            print(f"警告：读取txt文件失败 {txt_filename}: {e}")
+    
+    # 如果仍然没有标题，使用文件名作为默认标题
+    if not title:
+        title = Path(filename).stem
+    
+    # 如果仍然没有标签，使用空列表
+    if not hashtags:
+        hashtags = []
+    
     return title, hashtags
 
 
