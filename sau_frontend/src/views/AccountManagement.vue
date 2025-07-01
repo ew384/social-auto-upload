@@ -208,12 +208,8 @@
                 :key="platform.name"
                 :label="platform.name"
                 :value="platform.name"
-              >
-                <div class="platform-option">
-                  <component :is="platform.icon" :class="['platform-icon', platform.class]" />
-                  <span>{{ platform.name }}</span>
-                </div>
-              </el-option>
+              />
+
             </el-select>
           </el-form-item>
 
@@ -276,325 +272,349 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { 
-  Plus, Search, Refresh, More, User, Edit, Delete,
-  CircleCheckFilled, WarningFilled, Grid, UserFilled,
-  Iphone, Loading, CircleCloseFilled
-} from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { accountApi } from '@/api/account'
-import { useAccountStore } from '@/stores/account'
-import { useAppStore } from '@/stores/app'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
+import {
+  Plus,
+  Search,
+  Refresh,
+  More,
+  User,
+  Edit,
+  Delete,
+  CircleCheckFilled,
+  WarningFilled,
+  Grid,
+  UserFilled,
+  Iphone,
+  Loading,
+  CircleCloseFilled,
+  VideoCamera,
+  VideoPlay,
+  Message,
+  Document,
+} from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { accountApi } from "@/api/account";
+import { useAccountStore } from "@/stores/account";
+import { useAppStore } from "@/stores/app";
 
 // 状态管理
-const accountStore = useAccountStore()
-const appStore = useAppStore()
+const accountStore = useAccountStore();
+const appStore = useAppStore();
 
 // 筛选和搜索
-const filterStatus = ref('')
-const filterPlatform = ref('')
-const searchKeyword = ref('')
+const filterStatus = ref("");
+const filterPlatform = ref("");
+const searchKeyword = ref("");
 
 // 平台配置
 const platforms = [
-  { name: '抖音', icon: 'VideoCamera', class: 'douyin' },
-  { name: '快手', icon: 'PlayTwo', class: 'kuaishou' },
-  { name: '视频号', icon: 'MessageBox', class: 'wechat' },
-  { name: '小红书', icon: 'Notebook', class: 'xiaohongshu' }
-]
+  { name: "抖音", icon: "VideoCamera", class: "douyin" },
+  { name: "快手", icon: "PlayTwo", class: "kuaishou" },
+  { name: "视频号", icon: "MessageBox", class: "wechat" },
+  { name: "小红书", icon: "Notebook", class: "xiaohongshu" },
+];
 
 // 对话框相关
-const dialogVisible = ref(false)
-const dialogType = ref('add')
-const accountFormRef = ref(null)
-const sseConnecting = ref(false)
-const qrCodeData = ref('')
-const loginStatus = ref('')
+const dialogVisible = ref(false);
+const dialogType = ref("add");
+const accountFormRef = ref(null);
+const sseConnecting = ref(false);
+const qrCodeData = ref("");
+const loginStatus = ref("");
 
 // 表单数据
 const accountForm = reactive({
   id: null,
-  name: '',
-  platform: '',
-  status: '正常'
-})
+  name: "",
+  platform: "",
+  status: "正常",
+});
 
 // 表单验证规则
 const rules = {
-  platform: [{ required: true, message: '请选择平台', trigger: 'change' }],
-  name: [{ required: true, message: '请输入账号名称', trigger: 'blur' }]
-}
+  platform: [{ required: true, message: "请选择平台", trigger: "change" }],
+  name: [{ required: true, message: "请输入账号名称", trigger: "blur" }],
+};
 
 // 计算属性
 const filteredAccounts = computed(() => {
-  let accounts = accountStore.accounts
+  let accounts = accountStore.accounts;
 
   if (filterStatus.value) {
-    accounts = accounts.filter(acc => acc.status === filterStatus.value)
+    accounts = accounts.filter((acc) => acc.status === filterStatus.value);
   }
 
   if (filterPlatform.value) {
-    accounts = accounts.filter(acc => acc.platform === filterPlatform.value)
+    accounts = accounts.filter((acc) => acc.platform === filterPlatform.value);
   }
 
   if (searchKeyword.value) {
-    accounts = accounts.filter(acc => 
+    accounts = accounts.filter((acc) =>
       acc.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
-    )
+    );
   }
 
-  return accounts
-})
+  return accounts;
+});
 
-const totalCount = computed(() => accountStore.accounts.length)
-const normalCount = computed(() => accountStore.accounts.filter(acc => acc.status === '正常').length)
-const abnormalCount = computed(() => accountStore.accounts.filter(acc => acc.status === '异常').length)
+const totalCount = computed(() => accountStore.accounts.length);
+const normalCount = computed(
+  () => accountStore.accounts.filter((acc) => acc.status === "正常").length
+);
+const abnormalCount = computed(
+  () => accountStore.accounts.filter((acc) => acc.status === "异常").length
+);
 const platformCount = computed(() => {
-  const platforms = new Set(accountStore.accounts.map(acc => acc.platform))
-  return platforms.size
-})
+  const platforms = new Set(accountStore.accounts.map((acc) => acc.platform));
+  return platforms.size;
+});
 
 // 方法
 const fetchAccounts = async () => {
-  if (appStore.isAccountRefreshing) return
-  
-  appStore.setAccountRefreshing(true)
-  
+  if (appStore.isAccountRefreshing) return;
+
+  appStore.setAccountRefreshing(true);
+
   try {
-    const res = await accountApi.getValidAccounts()
+    const res = await accountApi.getValidAccounts();
     if (res.code === 200 && res.data) {
-      accountStore.setAccounts(res.data)
-      ElMessage.success('账号数据刷新成功')
+      accountStore.setAccounts(res.data);
+      ElMessage.success("账号数据刷新成功");
       if (appStore.isFirstTimeAccountManagement) {
-        appStore.setAccountManagementVisited()
+        appStore.setAccountManagementVisited();
       }
     } else {
-      ElMessage.error('获取账号数据失败')
+      ElMessage.error("获取账号数据失败");
     }
   } catch (error) {
-    console.error('获取账号数据失败:', error)
-    ElMessage.error('获取账号数据失败')
+    console.error("获取账号数据失败:", error);
+    ElMessage.error("获取账号数据失败");
   } finally {
-    appStore.setAccountRefreshing(false)
+    appStore.setAccountRefreshing(false);
   }
-}
+};
 
 const handleSearch = () => {
   // 搜索逻辑已通过计算属性实现
-}
+};
 
 const handleAddAccount = () => {
-  dialogType.value = 'add'
+  dialogType.value = "add";
   Object.assign(accountForm, {
     id: null,
-    name: '',
-    platform: '',
-    status: '正常'
-  })
-  sseConnecting.value = false
-  qrCodeData.value = ''
-  loginStatus.value = ''
-  dialogVisible.value = true
-}
+    name: "",
+    platform: "",
+    status: "正常",
+  });
+  sseConnecting.value = false;
+  qrCodeData.value = "";
+  loginStatus.value = "";
+  dialogVisible.value = true;
+};
 
 const handleEdit = (account) => {
-  dialogType.value = 'edit'
-  Object.assign(accountForm, { ...account })
-  dialogVisible.value = true
-}
+  dialogType.value = "edit";
+  Object.assign(accountForm, { ...account });
+  dialogVisible.value = true;
+};
 
 const handleDelete = (account) => {
-  ElMessageBox.confirm(
-    `确定要删除账号 ${account.name} 吗？`,
-    '删除确认',
-    {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  )
+  ElMessageBox.confirm(`确定要删除账号 ${account.name} 吗？`, "删除确认", {
+    confirmButtonText: "确定删除",
+    cancelButtonText: "取消",
+    type: "warning",
+  })
     .then(async () => {
       try {
-        const response = await accountApi.deleteAccount(account.id)
-        
+        const response = await accountApi.deleteAccount(account.id);
+
         if (response.code === 200) {
-          accountStore.deleteAccount(account.id)
-          ElMessage.success('删除成功')
+          accountStore.deleteAccount(account.id);
+          ElMessage.success("删除成功");
         } else {
-          ElMessage.error(response.msg || '删除失败')
+          ElMessage.error(response.msg || "删除失败");
         }
       } catch (error) {
-        console.error('删除账号失败:', error)
-        ElMessage.error('删除账号失败')
+        console.error("删除账号失败:", error);
+        ElMessage.error("删除账号失败");
       }
     })
-    .catch(() => {})
-}
+    .catch(() => {});
+};
 
 const getPlatformClass = (platform) => {
   const classMap = {
-    '抖音': 'douyin',
-    '快手': 'kuaishou', 
-    '视频号': 'wechat',
-    '小红书': 'xiaohongshu'
-  }
-  return classMap[platform] || 'default'
-}
+    抖音: "douyin",
+    快手: "kuaishou",
+    视频号: "wechat",
+    小红书: "xiaohongshu",
+  };
+  return classMap[platform] || "default";
+};
 
 const getPlatformIcon = (platform) => {
   const iconMap = {
-    '抖音': 'VideoCamera',
-    '快手': 'PlayTwo',
-    '视频号': 'MessageBox',
-    '小红书': 'Notebook'
-  }
-  return iconMap[platform] || 'Platform'
-}
+    抖音: "VideoCamera",
+    快手: "PlayTwo",
+    视频号: "MessageBox",
+    小红书: "Notebook",
+  };
+  return iconMap[platform] || "Platform";
+};
 
 // SSE连接相关
-let eventSource = null
+let eventSource = null;
 
 const closeSSEConnection = () => {
   if (eventSource) {
-    eventSource.close()
-    eventSource = null
+    eventSource.close();
+    eventSource = null;
   }
-}
+};
 
 const connectSSE = (platform, name) => {
-  closeSSEConnection()
-  
-  sseConnecting.value = true
-  qrCodeData.value = ''
-  loginStatus.value = ''
-  
+  closeSSEConnection();
+
+  sseConnecting.value = true;
+  qrCodeData.value = "";
+  loginStatus.value = "";
+
   const platformTypeMap = {
-    '小红书': '1',
-    '视频号': '2',
-    '抖音': '3',
-    '快手': '4'
-  }
-  
-  const type = platformTypeMap[platform] || '1'
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
-  const url = `${baseUrl}/login?type=${type}&id=${encodeURIComponent(name)}`
-  
-  eventSource = new EventSource(url)
-  
+    小红书: "1",
+    视频号: "2",
+    抖音: "3",
+    快手: "4",
+  };
+
+  const type = platformTypeMap[platform] || "1";
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5409";
+  const url = `${baseUrl}/login?type=${type}&id=${encodeURIComponent(name)}`;
+
+  eventSource = new EventSource(url);
+
   eventSource.onmessage = (event) => {
-    const data = event.data
-    console.log('SSE消息:', data)
-    
+    const data = event.data;
+    console.log("SSE消息:", data);
+
     if (!qrCodeData.value && data.length > 100) {
       try {
-        if (data.startsWith('data:image')) {
-          qrCodeData.value = data
+        if (data.startsWith("data:image")) {
+          qrCodeData.value = data;
         } else {
-          qrCodeData.value = `data:image/png;base64,${data}`
+          qrCodeData.value = `data:image/png;base64,${data}`;
         }
       } catch (error) {
-        console.error('处理二维码数据出错:', error)
+        console.error("处理二维码数据出错:", error);
       }
-    } 
-    else if (data === '200' || data === '500') {
-      loginStatus.value = data
-      
-      if (data === '200') {
+    } else if (data === "200" || data === "500") {
+      loginStatus.value = data;
+
+      if (data === "200") {
         setTimeout(() => {
-          closeSSEConnection()
+          closeSSEConnection();
           setTimeout(() => {
-            dialogVisible.value = false
-            sseConnecting.value = false
-            ElMessage.success('账号添加成功')
-            fetchAccounts()
-          }, 1000)
-        }, 1000)
+            dialogVisible.value = false;
+            sseConnecting.value = false;
+            ElMessage.success("账号添加成功");
+            fetchAccounts();
+          }, 1000);
+        }, 1000);
       } else {
-        closeSSEConnection()
+        closeSSEConnection();
         setTimeout(() => {
-          sseConnecting.value = false
-          qrCodeData.value = ''
-          loginStatus.value = ''
-        }, 2000)
+          sseConnecting.value = false;
+          qrCodeData.value = "";
+          loginStatus.value = "";
+        }, 2000);
       }
     }
-  }
-  
+  };
+
   eventSource.onerror = (error) => {
-    console.error('SSE连接错误:', error)
-    ElMessage.error('连接服务器失败，请稍后再试')
-    closeSSEConnection()
-    sseConnecting.value = false
-  }
-}
+    console.error("SSE连接错误:", error);
+    ElMessage.error("连接服务器失败，请稍后再试");
+    closeSSEConnection();
+    sseConnecting.value = false;
+  };
+};
 
 const submitAccountForm = () => {
   accountFormRef.value.validate(async (valid) => {
     if (valid) {
-      if (dialogType.value === 'add') {
-        connectSSE(accountForm.platform, accountForm.name)
+      if (dialogType.value === "add") {
+        connectSSE(accountForm.platform, accountForm.name);
       } else {
         try {
           const res = await accountApi.updateAccount({
             id: accountForm.id,
-            type: Number(accountForm.platform === '快手' ? 1 : accountForm.platform === '抖音' ? 2 : accountForm.platform === '视频号' ? 3 : 4),
-            userName: accountForm.name
-          })
+            type: Number(
+              accountForm.platform === "快手"
+                ? 1
+                : accountForm.platform === "抖音"
+                ? 2
+                : accountForm.platform === "视频号"
+                ? 3
+                : 4
+            ),
+            userName: accountForm.name,
+          });
           if (res.code === 200) {
-            accountStore.updateAccount(accountForm.id, accountForm)
-            ElMessage.success('更新成功')
-            dialogVisible.value = false
-            fetchAccounts()
+            accountStore.updateAccount(accountForm.id, accountForm);
+            ElMessage.success("更新成功");
+            dialogVisible.value = false;
+            fetchAccounts();
           } else {
-            ElMessage.error(res.msg || '更新账号失败')
+            ElMessage.error(res.msg || "更新账号失败");
           }
         } catch (error) {
-          console.error('更新账号失败:', error)
-          ElMessage.error('更新账号失败')
+          console.error("更新账号失败:", error);
+          ElMessage.error("更新账号失败");
         }
       }
     }
-  })
-}
+  });
+};
 
 // 生命周期
 onMounted(() => {
   if (appStore.isFirstTimeAccountManagement) {
-    fetchAccounts()
+    fetchAccounts();
   }
-})
+});
 
 onBeforeUnmount(() => {
-  closeSSEConnection()
-})
+  closeSSEConnection();
+});
 </script>
 
 <style lang="scss" scoped>
 // 变量定义
-$primary: #5B73DE;
-$success: #10B981;
-$warning: #F59E0B;
-$danger: #EF4444;
-$info: #6B7280;
+$primary: #5b73de;
+$success: #10b981;
+$warning: #f59e0b;
+$danger: #ef4444;
+$info: #6b7280;
 
-$platform-douyin: #FE2C55;
-$platform-kuaishou: #FF6600;
-$platform-xiaohongshu: #FF2442;
-$platform-wechat: #07C160;
+$platform-douyin: #fe2c55;
+$platform-kuaishou: #ff6600;
+$platform-xiaohongshu: #ff2442;
+$platform-wechat: #07c160;
 
-$bg-light: #F8FAFC;
-$bg-white: #FFFFFF;
-$bg-gray: #F1F5F9;
+$bg-light: #f8fafc;
+$bg-white: #ffffff;
+$bg-gray: #f1f5f9;
 
-$text-primary: #1E293B;
-$text-secondary: #64748B;
-$text-muted: #94A3B8;
+$text-primary: #1e293b;
+$text-secondary: #64748b;
+$text-muted: #94a3b8;
 
-$border-light: #E2E8F0;
+$border-light: #e2e8f0;
 $shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+  0 2px 4px -1px rgba(0, 0, 0, 0.06);
+$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+  0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
 $radius-sm: 4px;
 $radius-md: 8px;
@@ -693,7 +713,8 @@ $space-2xl: 48px;
     display: flex;
     gap: $space-sm;
 
-    .refresh-btn, .more-btn {
+    .refresh-btn,
+    .more-btn {
       width: 40px;
       height: 40px;
       border-radius: $radius-md;
@@ -747,19 +768,19 @@ $space-2xl: 48px;
         }
 
         &.total {
-          background: linear-gradient(135deg, $primary 0%, #8B9EE8 100%);
+          background: linear-gradient(135deg, $primary 0%, #8b9ee8 100%);
         }
 
         &.normal {
-          background: linear-gradient(135deg, $success 0%, #34D399 100%);
+          background: linear-gradient(135deg, $success 0%, #34d399 100%);
         }
 
         &.abnormal {
-          background: linear-gradient(135deg, $danger 0%, #F87171 100%);
+          background: linear-gradient(135deg, $danger 0%, #f87171 100%);
         }
 
         &.platforms {
-          background: linear-gradient(135deg, $info 0%, #9CA3AF 100%);
+          background: linear-gradient(135deg, $info 0%, #9ca3af 100%);
         }
       }
 
@@ -821,19 +842,27 @@ $space-2xl: 48px;
       }
 
       &.douyin {
-        background: linear-gradient(135deg, $platform-douyin 0%, #FF6B8A 100%);
+        background: linear-gradient(135deg, $platform-douyin 0%, #ff6b8a 100%);
       }
 
       &.kuaishou {
-        background: linear-gradient(135deg, $platform-kuaishou 0%, #FF8533 100%);
+        background: linear-gradient(
+          135deg,
+          $platform-kuaishou 0%,
+          #ff8533 100%
+        );
       }
 
       &.wechat {
-        background: linear-gradient(135deg, $platform-wechat 0%, #3DD68C 100%);
+        background: linear-gradient(135deg, $platform-wechat 0%, #3dd68c 100%);
       }
 
       &.xiaohongshu {
-        background: linear-gradient(135deg, $platform-xiaohongshu 0%, #FF5B75 100%);
+        background: linear-gradient(
+          135deg,
+          $platform-xiaohongshu 0%,
+          #ff5b75 100%
+        );
       }
     }
 
@@ -924,7 +953,7 @@ $space-2xl: 48px;
       width: 80px;
       height: 80px;
       border-radius: 50%;
-      background: linear-gradient(135deg, $bg-gray 0%, #E2E8F0 100%);
+      background: linear-gradient(135deg, $bg-gray 0%, #e2e8f0 100%);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -966,10 +995,18 @@ $space-2xl: 48px;
         .platform-icon {
           font-size: 16px;
 
-          &.douyin { color: $platform-douyin; }
-          &.kuaishou { color: $platform-kuaishou; }
-          &.wechat { color: $platform-wechat; }
-          &.xiaohongshu { color: $platform-xiaohongshu; }
+          &.douyin {
+            color: $platform-douyin;
+          }
+          &.kuaishou {
+            color: $platform-kuaishou;
+          }
+          &.wechat {
+            color: $platform-wechat;
+          }
+          &.xiaohongshu {
+            color: $platform-xiaohongshu;
+          }
         }
       }
     }
@@ -1008,14 +1045,18 @@ $space-2xl: 48px;
         }
       }
 
-      .loading-wrapper, .success-wrapper, .error-wrapper {
+      .loading-wrapper,
+      .success-wrapper,
+      .error-wrapper {
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: $space-md;
         padding: $space-2xl;
 
-        .loading-icon, .success-icon, .error-icon {
+        .loading-icon,
+        .success-icon,
+        .error-icon {
           font-size: 48px;
         }
 
@@ -1032,7 +1073,9 @@ $space-2xl: 48px;
           color: $danger;
         }
 
-        .loading-text, .success-text, .error-text {
+        .loading-text,
+        .success-text,
+        .error-text {
           font-size: 16px;
           font-weight: 500;
         }
@@ -1050,8 +1093,12 @@ $space-2xl: 48px;
 
 // 动画
 @keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 // 响应式
