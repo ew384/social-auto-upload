@@ -21,6 +21,7 @@ import sys
 app = Flask(__name__)
 
 # 配置
+app.config['JSON_AS_ASCII'] = False
 UPLOAD_FOLDER = './temp_uploads'
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'}
 MAX_CONTENT_LENGTH = 500 * 1024 * 1024  # 500MB
@@ -85,7 +86,12 @@ async def run_upload_task(task):
             'upload',
             task.video_file
         ]
-        
+        if task.title:
+            cmd.extend(['--title', task.title])
+
+        if task.description:  # 这里用 description 作为 tags
+            cmd.extend(['--tags', task.description])
+
         if task.publish_type == 0:
             cmd.extend(['-pt', '0'])
         elif task.publish_type == 1 and task.schedule:
