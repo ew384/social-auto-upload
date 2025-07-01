@@ -42,25 +42,17 @@ export const groupApi = {
             account_ids: accountIds,
             group_id: groupId
         })
-    },
-
-    // 获取带分组信息的账号列表
-    getAccountsWithGroups() {
-        return http.get('/getValidAccountsWithGroups')
     }
 }
 
-// 更新 sau_frontend/src/api/account.js
-import { http } from '@/utils/request'
-
 // 账号管理相关API
 export const accountApi = {
-    // 获取有效账号列表
+    // 获取有效账号列表（原有接口）
     getValidAccounts() {
         return http.get('/getValidAccounts')
     },
 
-    // 获取带分组信息的账号列表
+    // 获取带分组信息的账号列表（新接口）
     getAccountsWithGroups() {
         return http.get('/getValidAccountsWithGroups')
     },

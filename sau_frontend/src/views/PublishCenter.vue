@@ -280,354 +280,389 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { 
-  Plus, Upload, CopyDocument, Delete, VideoCamera, Folder,
-  VideoPlay, View, Check, Close, User, ArrowLeft, ArrowRight,
-  FolderOpened, Grid
-} from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { useAccountStore } from '@/stores/account'
-import { useGroupStore } from '@/stores/group'
-import { useAppStore } from '@/stores/app'
-import { accountApi } from '@/api/account'
-import { groupApi } from '@/api/group'
+import { ref, reactive, computed, onMounted } from "vue";
+import {
+  Plus,
+  Upload,
+  CopyDocument,
+  Delete,
+  VideoCamera,
+  Folder,
+  VideoPlay,
+  View,
+  Check,
+  Close,
+  User,
+  ArrowLeft,
+  ArrowRight,
+  FolderOpened,
+  Grid,
+} from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { useAccountStore } from "@/stores/account";
+import { useGroupStore } from "@/stores/group";
+import { useAppStore } from "@/stores/app";
+import { accountApi } from "@/api/account";
+import { groupApi } from "@/api/group";
 
 // 状态管理
-const accountStore = useAccountStore()
-const groupStore = useGroupStore()
-const appStore = useAppStore()
+const accountStore = useAccountStore();
+const groupStore = useGroupStore();
+const appStore = useAppStore();
 
 // 步骤配置
 const steps = [
-  { key: 'video', label: '选择视频' },
-  { key: 'accounts', label: '选择账号' },
-  { key: 'content', label: '编辑内容' },
-  { key: 'confirm', label: '确认发布' }
-]
+  { key: "video", label: "选择视频" },
+  { key: "accounts", label: "选择账号" },
+  { key: "content", label: "编辑内容" },
+  { key: "confirm", label: "确认发布" },
+];
 
 // 发布任务列表
-const publishTasks = ref([])
-let taskIdCounter = 1
+const publishTasks = ref([]);
+let taskIdCounter = 1;
 
 // 计算属性
-const availableAccounts = computed(() => accountStore.accounts)
+const availableAccounts = computed(() => accountStore.accounts);
 
 // 按分组组织的账号
 const groupsWithAccounts = computed(() => {
-  return groupStore.groups.map(group => ({
+  return groupStore.groups.map((group) => ({
     ...group,
-    accounts: accountStore.getAccountsByGroup(group.id).filter(acc => acc.status === '正常')
-  }))
-})
+    accounts: accountStore
+      .getAccountsByGroup(group.id)
+      .filter((acc) => acc.status === "正常"),
+  }));
+});
 
 // 方法定义
 const addNewPublishTask = () => {
   const newTask = {
     id: taskIdCounter++,
-    title: '',
-    currentStep: 'video',
-    status: 'draft',
+    title: "",
+    currentStep: "video",
+    status: "draft",
     videos: [],
     selectedAccounts: [],
     topics: [],
     scheduleEnabled: false,
-    scheduleTime: '',
+    scheduleTime: "",
     publishing: false,
     publishProgress: 0,
-    publishProgressText: ''
-  }
-  
-  publishTasks.value.push(newTask)
-}
+    publishProgressText: "",
+  };
+
+  publishTasks.value.push(newTask);
+};
 
 const getStepIndex = (stepKey) => {
-  return steps.findIndex(step => step.key === stepKey)
-}
+  return steps.findIndex((step) => step.key === stepKey);
+};
 
 const getTaskStatusType = (status) => {
   const typeMap = {
-    'draft': 'info',
-    'publishing': 'warning',
-    'published': 'success',
-    'error': 'danger'
-  }
-  return typeMap[status] || 'info'
-}
+    draft: "info",
+    publishing: "warning",
+    published: "success",
+    error: "danger",
+  };
+  return typeMap[status] || "info";
+};
 
 const getTaskStatusText = (status) => {
   const textMap = {
-    'draft': '草稿',
-    'publishing': '发布中',
-    'published': '已发布',
-    'error': '发布失败'
-  }
-  return textMap[status] || '未知'
-}
+    draft: "草稿",
+    publishing: "发布中",
+    published: "已发布",
+    error: "发布失败",
+  };
+  return textMap[status] || "未知";
+};
 
 const setCurrentStep = (task, stepKey) => {
-  if (task.publishing) return
-  task.currentStep = stepKey
-}
+  if (task.publishing) return;
+  task.currentStep = stepKey;
+};
 
 // 分组相关方法
 const getGroupAccountCount = (groupId) => {
-  return accountStore.getAccountsByGroup(groupId).filter(acc => acc.status === '正常').length
-}
+  return accountStore
+    .getAccountsByGroup(groupId)
+    .filter((acc) => acc.status === "正常").length;
+};
 
 const isGroupSelected = (task, groupId) => {
-  const groupAccounts = accountStore.getAccountsByGroup(groupId).filter(acc => acc.status === '正常')
-  if (groupAccounts.length === 0) return false
-  
-  return groupAccounts.every(account => task.selectedAccounts.includes(account.id))
-}
+  const groupAccounts = accountStore
+    .getAccountsByGroup(groupId)
+    .filter((acc) => acc.status === "正常");
+  if (groupAccounts.length === 0) return false;
+
+  return groupAccounts.every((account) =>
+    task.selectedAccounts.includes(account.id)
+  );
+};
 
 const toggleGroupSelection = (task, group) => {
-  const groupAccounts = accountStore.getAccountsByGroup(group.id).filter(acc => acc.status === '正常')
-  const isSelected = isGroupSelected(task, group.id)
-  
+  const groupAccounts = accountStore
+    .getAccountsByGroup(group.id)
+    .filter((acc) => acc.status === "正常");
+  const isSelected = isGroupSelected(task, group.id);
+
   if (isSelected) {
     // 取消选择这个分组的所有账号
-    groupAccounts.forEach(account => {
-      const index = task.selectedAccounts.indexOf(account.id)
+    groupAccounts.forEach((account) => {
+      const index = task.selectedAccounts.indexOf(account.id);
       if (index > -1) {
-        task.selectedAccounts.splice(index, 1)
+        task.selectedAccounts.splice(index, 1);
       }
-    })
+    });
   } else {
     // 选择这个分组的所有账号
-    groupAccounts.forEach(account => {
+    groupAccounts.forEach((account) => {
       if (!task.selectedAccounts.includes(account.id)) {
-        task.selectedAccounts.push(account.id)
+        task.selectedAccounts.push(account.id);
       }
-    })
+    });
   }
-}
+};
 
 const toggleAllAccounts = (task) => {
-  const allAccountIds = availableAccounts.value.filter(acc => acc.status === '正常').map(acc => acc.id)
-  
+  const allAccountIds = availableAccounts.value
+    .filter((acc) => acc.status === "正常")
+    .map((acc) => acc.id);
+
   if (task.selectedAccounts.length === allAccountIds.length) {
     // 全部取消选择
-    task.selectedAccounts = []
+    task.selectedAccounts = [];
   } else {
     // 全部选择
-    task.selectedAccounts = [...allAccountIds]
+    task.selectedAccounts = [...allAccountIds];
   }
-}
+};
 
 const toggleAccountSelection = (task, account) => {
-  if (account.status !== '正常') return
-  
-  const index = task.selectedAccounts.indexOf(account.id)
+  if (account.status !== "正常") return;
+
+  const index = task.selectedAccounts.indexOf(account.id);
   if (index > -1) {
-    task.selectedAccounts.splice(index, 1)
+    task.selectedAccounts.splice(index, 1);
   } else {
-    task.selectedAccounts.push(account.id)
+    task.selectedAccounts.push(account.id);
   }
-}
+};
 
 const clearAccountSelection = (task) => {
-  task.selectedAccounts = []
-}
+  task.selectedAccounts = [];
+};
 
 const getSelectedPlatforms = (task) => {
-  const platforms = new Set()
-  task.selectedAccounts.forEach(accountId => {
-    const account = accountStore.accounts.find(acc => acc.id === accountId)
+  const platforms = new Set();
+  task.selectedAccounts.forEach((accountId) => {
+    const account = accountStore.accounts.find((acc) => acc.id === accountId);
     if (account) {
-      platforms.add(account.platform)
+      platforms.add(account.platform);
     }
-  })
-  return Array.from(platforms)
-}
+  });
+  return Array.from(platforms);
+};
 
 const getPlatformTagType = (platform) => {
   const typeMap = {
-    '抖音': 'danger',
-    '快手': 'warning', 
-    '视频号': 'success',
-    '小红书': 'primary'
-  }
-  return typeMap[platform] || 'info'
-}
+    抖音: "danger",
+    快手: "warning",
+    视频号: "success",
+    小红书: "primary",
+  };
+  return typeMap[platform] || "info";
+};
 
 const getPlatformIcon = (platform) => {
   const iconMap = {
-    '抖音': 'VideoCamera',
-    '快手': 'PlayTwo',
-    '视频号': 'MessageBox',
-    '小红书': 'Notebook'
-  }
-  return iconMap[platform] || 'Platform'
-}
+    抖音: "VideoCamera",
+    快手: "PlayTwo",
+    视频号: "MessageBox",
+    小红书: "Notebook",
+  };
+  return iconMap[platform] || "Platform";
+};
 
 const canProceedToNextStep = (task) => {
   switch (task.currentStep) {
-    case 'video':
-      return task.videos.length > 0
-    case 'accounts':
-      return task.selectedAccounts.length > 0
-    case 'content':
-      return task.title.trim().length > 0
+    case "video":
+      return task.videos.length > 0;
+    case "accounts":
+      return task.selectedAccounts.length > 0;
+    case "content":
+      return task.title.trim().length > 0;
     default:
-      return true
+      return true;
   }
-}
+};
 
 const canPublish = (task) => {
-  return task.videos.length > 0 && 
-         task.selectedAccounts.length > 0 && 
-         task.title.trim().length > 0
-}
+  return (
+    task.videos.length > 0 &&
+    task.selectedAccounts.length > 0 &&
+    task.title.trim().length > 0
+  );
+};
 
 const nextStep = (task) => {
-  const currentIndex = getStepIndex(task.currentStep)
+  const currentIndex = getStepIndex(task.currentStep);
   if (currentIndex < steps.length - 1) {
-    task.currentStep = steps[currentIndex + 1].key
+    task.currentStep = steps[currentIndex + 1].key;
   }
-}
+};
 
 const previousStep = (task) => {
-  const currentIndex = getStepIndex(task.currentStep)
+  const currentIndex = getStepIndex(task.currentStep);
   if (currentIndex > 0) {
-    task.currentStep = steps[currentIndex - 1].key
+    task.currentStep = steps[currentIndex - 1].key;
   }
-}
+};
 
 const publishTask = async (task) => {
-  if (task.publishing) return
-  
-  task.publishing = true
-  task.publishProgress = 0
-  task.publishProgressText = '准备发布...'
-  task.status = 'publishing'
-  
+  if (task.publishing) return;
+
+  task.publishing = true;
+  task.publishProgress = 0;
+  task.publishProgressText = "准备发布...";
+  task.status = "publishing";
+
   try {
     // 构建发布数据
     const publishData = {
-      fileList: task.videos.map(video => video.path),
+      fileList: task.videos.map((video) => video.path),
       accountList: task.selectedAccounts,
       type: 1, // 这里需要根据实际平台类型确定
       title: task.title,
-      tags: task.topics.join(' '),
+      tags: task.topics.join(" "),
       category: 0,
       enableTimer: task.scheduleEnabled,
       videosPerDay: 1,
       dailyTimes: task.scheduleEnabled ? [task.scheduleTime] : [],
-      startDays: 0
-    }
-    
+      startDays: 0,
+    };
+
     // 调用发布API
-    const response = await fetch('/postVideo', {
-      method: 'POST',
+    const response = await fetch("/postVideo", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(publishData)
-    })
-    
-    task.publishProgressText = '正在发布...'
-    task.publishProgress = 50
-    
+      body: JSON.stringify(publishData),
+    });
+
+    task.publishProgressText = "正在发布...";
+    task.publishProgress = 50;
+
     if (response.ok) {
-      task.publishProgress = 100
-      task.publishProgressText = '发布成功'
-      task.status = 'published'
-      task.publishing = false
-      ElMessage.success('发布成功')
+      task.publishProgress = 100;
+      task.publishProgressText = "发布成功";
+      task.status = "published";
+      task.publishing = false;
+      ElMessage.success("发布成功");
     } else {
-      throw new Error('发布失败')
+      throw new Error("发布失败");
     }
-    
   } catch (error) {
-    console.error('发布错误:', error)
-    task.status = 'error'
-    task.publishProgressText = '发布失败'
-    task.publishing = false
-    ElMessage.error('发布失败')
+    console.error("发布错误:", error);
+    task.status = "error";
+    task.publishProgressText = "发布失败";
+    task.publishing = false;
+    ElMessage.error("发布失败");
   }
-}
+};
 
 const duplicateTask = (task) => {
   const duplicatedTask = {
     ...JSON.parse(JSON.stringify(task)),
     id: taskIdCounter++,
-    status: 'draft',
+    status: "draft",
     publishing: false,
     publishProgress: 0,
-    publishProgressText: ''
-  }
-  
-  publishTasks.value.push(duplicatedTask)
-  ElMessage.success('任务复制成功')
-}
+    publishProgressText: "",
+  };
+
+  publishTasks.value.push(duplicatedTask);
+  ElMessage.success("任务复制成功");
+};
 
 const deleteTask = (task) => {
-  ElMessageBox.confirm(
-    '确定要删除这个发布任务吗？',
-    '删除确认',
-    {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    const index = publishTasks.value.indexOf(task)
-    if (index > -1) {
-      publishTasks.value.splice(index, 1)
-      ElMessage.success('任务删除成功')
-    }
-  }).catch(() => {})
-}
+  ElMessageBox.confirm("确定要删除这个发布任务吗？", "删除确认", {
+    confirmButtonText: "确定删除",
+    cancelButtonText: "取消",
+    type: "warning",
+  })
+    .then(() => {
+      const index = publishTasks.value.indexOf(task);
+      if (index > -1) {
+        publishTasks.value.splice(index, 1);
+        ElMessage.success("任务删除成功");
+      }
+    })
+    .catch(() => {});
+};
 
 // 获取数据
 const fetchData = async () => {
   try {
     // 获取分组数据
-    const groupRes = await groupApi.getAllGroups()
+    const groupRes = await groupApi.getAllGroups();
     if (groupRes.code === 200) {
-      groupStore.setGroups(groupRes.data)
+      groupStore.setGroups(groupRes.data);
     }
-    
-    // 获取账号数据
-    const accountRes = await accountApi.getAccountsWithGroups()
-    if (accountRes.code === 200) {
-      accountStore.setAccounts(accountRes.data)
+
+    // 获取账号数据 - 使用现有接口作为fallback
+    try {
+      const accountRes = await accountApi.getAccountsWithGroups();
+      if (accountRes.code === 200) {
+        accountStore.setAccounts(accountRes.data);
+      }
+    } catch (error) {
+      console.warn("新接口调用失败，使用原有接口:", error);
+      // 如果新接口失败，使用原有接口
+      const accountRes = await accountApi.getValidAccounts();
+      if (accountRes.code === 200) {
+        accountStore.setAccounts(accountRes.data);
+      }
     }
   } catch (error) {
-    console.error('获取数据失败:', error)
+    console.error("获取数据失败:", error);
+    ElMessage.error("获取数据失败");
   }
-}
+};
 
 // 初始化
 onMounted(() => {
-  fetchData()
+  fetchData();
   // 创建一个默认任务
-  addNewPublishTask()
-})
+  addNewPublishTask();
+});
 </script>
 
 <style lang="scss" scoped>
 // 变量定义保持原有样式
-$primary: #5B73DE;
-$success: #10B981;
-$warning: #F59E0B;
-$danger: #EF4444;
-$info: #6B7280;
+$primary: #5b73de;
+$success: #10b981;
+$warning: #f59e0b;
+$danger: #ef4444;
+$info: #6b7280;
 
-$bg-light: #F8FAFC;
-$bg-white: #FFFFFF;
-$bg-gray: #F1F5F9;
+$bg-light: #f8fafc;
+$bg-white: #ffffff;
+$bg-gray: #f1f5f9;
 
-$text-primary: #1E293B;
-$text-secondary: #64748B;
-$text-muted: #94A3B8;
+$text-primary: #1e293b;
+$text-secondary: #64748b;
+$text-muted: #94a3b8;
 
-$border-light: #E2E8F0;
+$border-light: #e2e8f0;
 $shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+  0 2px 4px -1px rgba(0, 0, 0, 0.06);
+$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+  0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
 $radius-sm: 4px;
 $radius-md: 8px;
@@ -703,7 +738,11 @@ $space-2xl: 48px;
       justify-content: space-between;
       align-items: center;
       padding: $space-lg;
-      background: linear-gradient(135deg, rgba(91, 115, 222, 0.05) 0%, rgba(139, 158, 232, 0.05) 100%);
+      background: linear-gradient(
+        135deg,
+        rgba(91, 115, 222, 0.05) 0%,
+        rgba(139, 158, 232, 0.05) 100%
+      );
       border-bottom: 1px solid $border-light;
 
       .group-info {

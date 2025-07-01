@@ -30,6 +30,17 @@ const routes = [
     path: '/about',
     name: 'About',
     component: About
+  },
+  // 添加缺失的路由
+  {
+    path: '/website',
+    name: 'Website',
+    component: () => import('../views/Website.vue')
+  },
+  {
+    path: '/data',
+    name: 'DataAnalysis',
+    component: () => import('../views/DataAnalysis.vue')
   }
 ]
 

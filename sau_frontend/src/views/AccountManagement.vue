@@ -508,7 +508,6 @@
   </div>
 </template>
 
-
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import {
@@ -1871,3 +1870,4 @@ $space-2xl: 48px;
     }
   }
 }
+</style>
