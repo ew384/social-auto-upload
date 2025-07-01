@@ -12,28 +12,37 @@ def get_absolute_path(relative_path: str, base_dir: str = None) -> str:
     return str(absolute_path)
 
 
-def get_title_and_hashtags(filename):
+def get_title_and_hashtags(filename, title_override=None, tags_override=None):
     """
-  获取视频标题和 hashtag
+    获取视频标题和 hashtag
 
-  Args:
-    filename: 视频文件名
+    Args:
+        filename: 视频文件名
+        title_override: 可选的标题覆盖
+        tags_override: 可选的标签覆盖 (格式: "#tag1 #tag2")
 
-  Returns:
-    视频标题和 hashtag 列表
-  """
-
-    # 获取视频标题和 hashtag txt 文件名
+    Returns:
+        视频标题和 hashtag 列表
+    """
+    
+    # 如果提供了覆盖参数，直接使用
+    if title_override and tags_override:
+        hashtags = tags_override.replace("#", "").split()
+        return title_override, hashtags
+    
+    # 原有的文件读取逻辑
     txt_filename = filename.replace(".mp4", ".txt")
-
-    # 读取 txt 文件
+    
     with open(txt_filename, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # 获取标题和 hashtag
     splite_str = content.strip().split("\n")
-    title = splite_str[0]
-    hashtags = splite_str[1].replace("#", "").split(" ")
+    title = title_override if title_override else splite_str[0]
+    
+    if tags_override:
+        hashtags = tags_override.replace("#", "").split()
+    else:
+        hashtags = splite_str[1].replace("#", "").split(" ")
 
     return title, hashtags
 

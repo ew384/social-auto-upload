@@ -140,9 +140,26 @@ class DouYinVideo(object):
         # 这里为了避免页面变化，故使用相对位置定位：作品标题父级右侧第一个元素的input子元素
         await asyncio.sleep(1)
         douyin_logger.info(f'  [-] 正在填充标题和话题...')
-        title_container = page.get_by_text('作品标题').locator("..").locator("xpath=following-sibling::div[1]").locator("input")
+        #title_container = page.get_by_text('作品标题').locator("..").locator("xpath=following-sibling::div[1]").locator("input")
+        await page.wait_for_selector('input[placeholder="填写作品标题，为作品获得更多流量"]', 
+                                    state="visible", timeout=50000)
+
+        title_container = page.locator('input[placeholder="填写作品标题，为作品获得更多流量"]')
+        element_count = await title_container.count()
+        douyin_logger.info(f'找到的标题输入框数量: {element_count}')
+
         if await title_container.count():
+            # 先点击聚焦
+            await title_container.click()
+            await asyncio.sleep(0.5)
+            
+            # 清空并填充
+            await title_container.fill("")  # 先清空
             await title_container.fill(self.title[:30])
+            
+            # 验证填充结果
+            filled_value = await title_container.input_value()
+            douyin_logger.info(f'标题填充结果: {filled_value}')
         else:
             titlecontainer = page.locator(".notranslate")
             await titlecontainer.click()
@@ -156,7 +173,7 @@ class DouYinVideo(object):
             await page.type(css_selector, "#" + tag)
             await page.press(css_selector, "Space")
         douyin_logger.info(f'总共添加{len(self.tags)}个话题')
-
+        await asyncio.sleep(100000)
         while True:
             # 判断重新上传按钮是否存在，如果不存在，代表视频正在上传，则等待
             try:

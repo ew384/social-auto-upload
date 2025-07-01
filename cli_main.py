@@ -13,7 +13,7 @@ from utils.base_social_media import get_supported_social_media, get_cli_action, 
     SOCIAL_MEDIA_TENCENT, SOCIAL_MEDIA_TIKTOK, SOCIAL_MEDIA_KUAISHOU
 from utils.constant import TencentZoneTypes
 from utils.files_times import get_title_and_hashtags
-
+import sqlite3
 
 def parse_schedule(schedule_raw):
     if schedule_raw:
@@ -22,7 +22,27 @@ def parse_schedule(schedule_raw):
         schedule = None
     return schedule
 
-
+def get_account_file_from_db(args):
+    platform_map = {
+        "xiaohongshu": 1,
+        "tencent": 2, 
+        "douyin": 3,
+        "kuaishou": 4,
+        "tiktok":5
+    }
+    
+    with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT filePath FROM user_info 
+            WHERE type = ? AND userName = ? AND status = 1
+        ''', (platform_map[args.platform], args.account_name))
+        
+        result = cursor.fetchone()
+        if result:
+            return Path(BASE_DIR / "cookiesFile" / result[0])
+        else:
+            raise FileNotFoundError(f"未找到平台 {args.platform} 账号 {args.account_name} 的有效cookie文件")
 async def main():
     # 主解析器
     parser = argparse.ArgumentParser(description="Upload video to multiple social-media.")
@@ -42,6 +62,8 @@ async def main():
             action_parser.add_argument("-pt", "--publish_type", type=int, choices=[0, 1],
                                        help="0 for immediate, 1 for scheduled", default=0)
             action_parser.add_argument('-t', '--schedule', help='Schedule UTC time in %Y-%m-%d %H:%M format')
+            action_parser.add_argument('--title', type=str, help='Video title (overrides txt file)')
+            action_parser.add_argument('--tags', type=str, help='Video tags in format "#tag1 #tag2" (overrides txt file)')
 
     # 解析命令行参数
     args = parser.parse_args()
@@ -52,7 +74,10 @@ async def main():
         if args.publish_type == 1 and not args.schedule:
             parser.error("The schedule must must be specified for scheduled publishing.")
 
-    account_file = Path(BASE_DIR / "cookies" / f"{args.platform}_{args.account_name}.json")
+
+
+    account_file = get_account_file_from_db(args)
+    #account_file = Path(BASE_DIR / "cookies" / f"{args.platform}_{args.account_name}.json")
     account_file.parent.mkdir(exist_ok=True)
 
     # 根据 action 处理不同的逻辑
@@ -67,7 +92,7 @@ async def main():
         elif args.platform == SOCIAL_MEDIA_KUAISHOU:
             await ks_setup(str(account_file), handle=True)
     elif args.action == 'upload':
-        title, tags = get_title_and_hashtags(args.video_file)
+        title, tags = get_title_and_hashtags(args.video_file, args.title, args.tags)
         video_file = args.video_file
 
         if args.publish_type == 0:
