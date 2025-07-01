@@ -58,7 +58,7 @@ async def main():
             # Login 不需要额外参数
             continue
         elif action == 'upload':
-            action_parser.add_argument("video_file", help="Path to the Video file")
+            action_parser.add_argument("--video_file", help="Path to the Video file")
             action_parser.add_argument("-pt", "--publish_type", type=int, choices=[0, 1],
                                        help="0 for immediate, 1 for scheduled", default=0)
             action_parser.add_argument('-t', '--schedule', help='Schedule UTC time in %Y-%m-%d %H:%M format')

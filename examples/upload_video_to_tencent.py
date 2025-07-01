@@ -5,7 +5,7 @@ from conf import BASE_DIR
 from uploader.tencent_uploader.main import weixin_setup, TencentVideo
 from utils.constant import TencentZoneTypes
 from utils.files_times import generate_schedule_time_next_day, get_title_and_hashtags
-
+from utils.video_utils import get_video_files
 
 if __name__ == '__main__':
     filepath = Path(BASE_DIR) / "videos"
@@ -13,7 +13,7 @@ if __name__ == '__main__':
     # 获取视频目录
     folder_path = Path(filepath)
     # 获取文件夹中的所有文件
-    files = list(folder_path.glob("*.mp4"))
+    files = get_video_files(folder_path)
     file_num = len(files)
     publish_datetimes = generate_schedule_time_next_day(file_num, 1, daily_times=[16])
     cookie_setup = asyncio.run(weixin_setup(account_file, handle=True))

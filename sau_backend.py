@@ -12,7 +12,7 @@ from flask import Flask, request, jsonify, Response, render_template, send_from_
 from conf import BASE_DIR
 from myUtils.login import get_tencent_cookie, douyin_cookie_gen, get_ks_cookie, xiaohongshu_cookie_gen
 from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs
-
+from utils.video_utils import is_video_file
 active_queues = {}
 app = Flask(__name__)
 
@@ -107,7 +107,12 @@ def upload_save():
         filename = custom_filename + "." + file.filename.split('.')[-1]
     else:
         filename = file.filename
-
+    if not is_video_file(filename):
+        return jsonify({
+            "code": 400,
+            "msg": "不支持的视频格式，请上传 MP4、MOV、AVI 等格式的视频",
+            "data": None
+        }), 400
     try:
         # 生成 UUID v1
         uuid_v1 = uuid.uuid1()
