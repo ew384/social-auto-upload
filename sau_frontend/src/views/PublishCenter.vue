@@ -601,6 +601,7 @@ const toggleAccountSelection = (task, account) => {
     task.selectedAccounts.splice(index, 1);
   } else {
     task.selectedAccounts.push(account.id);
+    task.currentPlatform = account.type;
   }
 };
 
