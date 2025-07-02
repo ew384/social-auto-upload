@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS user_info (
     type INTEGER NOT NULL,
     filePath TEXT NOT NULL,  -- 存储文件路径
     userName TEXT NOT NULL,
-    status INTEGER DEFAULT 0
+    status INTEGER DEFAULT 0,
+    last_check_time DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 新增：最后检查时间
+    check_interval INTEGER DEFAULT 3600                  -- 新增：检查间隔（秒），默认1小时
 )
 ''')
 

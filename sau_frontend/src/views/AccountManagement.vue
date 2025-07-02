@@ -370,17 +370,20 @@ const platformCount = computed(() => {
   return platforms.size;
 });
 
-// 方法
-const fetchAccounts = async () => {
+const fetchAccounts = async (forceCheck = false) => {
   if (appStore.isAccountRefreshing) return;
 
   appStore.setAccountRefreshing(true);
 
   try {
-    const res = await accountApi.getValidAccounts();
+    const res = await accountApi.getValidAccounts(forceCheck);
     if (res.code === 200 && res.data) {
       accountStore.setAccounts(res.data);
-      ElMessage.success("账号数据刷新成功");
+      if (forceCheck) {
+        ElMessage.success("账号数据刷新成功");
+      } else {
+        ElMessage.success("账号数据加载成功");
+      }
       if (appStore.isFirstTimeAccountManagement) {
         appStore.setAccountManagementVisited();
       }
@@ -579,10 +582,12 @@ const submitAccountForm = () => {
 // 生命周期
 onMounted(() => {
   if (appStore.isFirstTimeAccountManagement) {
-    fetchAccounts();
+    fetchAccounts(false); // 首次加载不强制验证
   }
 });
-
+const handleRefresh = () => {
+  fetchAccounts(true); // 手动刷新时强制验证
+};
 onBeforeUnmount(() => {
   closeSSEConnection();
 });

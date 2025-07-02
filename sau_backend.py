@@ -13,6 +13,7 @@ from conf import BASE_DIR
 from myUtils.login import get_tencent_cookie, douyin_cookie_gen, get_ks_cookie, xiaohongshu_cookie_gen
 from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs
 from utils.video_utils import is_video_file
+from datetime import datetime
 active_queues = {}
 app = Flask(__name__)
 
@@ -178,36 +179,78 @@ def get_all_files():
         }), 500
 
 
-@app.route("/getValidAccounts",methods=['GET'])
+
+@app.route("/getValidAccounts", methods=['GET'])
 async def getValidAccounts():
+    force_check = request.args.get('force', 'false').lower() == 'true'
+    
     with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
         cursor = conn.cursor()
+        
+        # 获取所有账号信息（包括新添加的字段）
         cursor.execute('''
-        SELECT * FROM user_info''')
+        SELECT id, type, filePath, userName, status, last_check_time, check_interval 
+        FROM user_info''')
         rows = cursor.fetchall()
-        rows_list = [list(row) for row in rows]
-        print("\n📋 当前数据表内容：")
+        
+        current_time = datetime.now()
+        platform_map = {1: '小红书', 2: '视频号', 3: '抖音', 4: '快手', 5: 'TikTok'}
+        accounts = []
+        
         for row in rows:
-            print(row)
-        for row in rows_list:
-            flag = await check_cookie(row[1],row[2])
-            if not flag:
-                row[4] = 0
-                cursor.execute('''
-                UPDATE user_info 
-                SET status = ? 
-                WHERE id = ?
-                ''', (0,row[0]))
-                conn.commit()
-                print("✅ 用户状态已更新")
-        for row in rows:
-            print(row)
-        return jsonify(
-                        {
-                            "code": 200,
-                            "msg": None,
-                            "data": rows_list
-                        }),200
+            user_id, type_val, file_path, user_name, status, last_check_time, check_interval = row
+            
+            # 判断是否需要验证
+            should_check = force_check
+            if not should_check and last_check_time:
+                try:
+                    last_check = datetime.fromisoformat(last_check_time)
+                    should_check = (current_time - last_check).total_seconds() > (check_interval or 3600)
+                except (ValueError, TypeError):
+                    should_check = True
+            elif not last_check_time:
+                should_check = True
+                
+            # 如果需要验证，则进行验证
+            if should_check:
+                try:
+                    flag = await check_cookie(type_val, file_path)
+                    new_status = 1 if flag else 0
+                    
+                    # 更新状态和检查时间
+                    cursor.execute('''
+                    UPDATE user_info 
+                    SET status = ?, last_check_time = ?
+                    WHERE id = ?
+                    ''', (new_status, current_time.isoformat(), user_id))
+                    conn.commit()
+                    
+                    status = new_status  # 更新当前状态
+                    print(f"✅ 验证账号 {user_name}: {'正常' if new_status else '异常'}")
+                except Exception as e:
+                    print(f"❌ 验证账号 {user_name} 失败: {e}")
+                    # 验证失败时不更新状态，保持原状态
+            
+            # 构建账号信息（保持原有的数据结构）
+            account = {
+                'id': user_id,
+                'type': type_val, 
+                'filePath': file_path,  # 保持原有字段名
+                'name': user_name,
+                'userName': user_name,
+                'platform': platform_map.get(type_val, '未知'),
+                'status': '正常' if status == 1 else '异常',
+                'avatar': '/default-avatar.png'
+            }
+            
+            # 返回所有账号（包括异常账号）
+            accounts.append(account)
+        
+        return jsonify({
+            "code": 200,
+            "msg": "success", 
+            "data": accounts
+        }), 200
 
 @app.route('/deleteFile', methods=['GET'])
 def delete_file():

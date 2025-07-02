@@ -431,326 +431,413 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { 
-  Plus, Upload, CopyDocument, Delete, VideoCamera, Folder,
-  VideoPlay, View, Check, Close, User, ArrowLeft, ArrowRight
-} from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { useAccountStore } from '@/stores/account'
-import { useAppStore } from '@/stores/app'
-import { materialApi } from '@/api/material'
+import { ref, reactive, computed, onMounted } from "vue";
+import {
+  Plus,
+  Upload,
+  CopyDocument,
+  Delete,
+  VideoCamera,
+  Folder,
+  VideoPlay,
+  View,
+  Check,
+  Close,
+  User,
+  ArrowLeft,
+  ArrowRight,
+} from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { useAccountStore } from "@/stores/account";
+import { useAppStore } from "@/stores/app";
+import { materialApi } from "@/api/material";
 
 // 状态管理
-const accountStore = useAccountStore()
-const appStore = useAppStore()
+const accountStore = useAccountStore();
+const appStore = useAppStore();
 
 // API配置
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5409";
 const authHeaders = computed(() => ({
-  'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
-}))
+  Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+}));
 
 // 步骤配置
 const steps = [
-  { key: 'video', label: '选择视频' },
-  { key: 'accounts', label: '选择账号' },
-  { key: 'content', label: '编辑内容' },
-  { key: 'confirm', label: '确认发布' }
-]
+  { key: "video", label: "选择视频" },
+  { key: "accounts", label: "选择账号" },
+  { key: "content", label: "编辑内容" },
+  { key: "confirm", label: "确认发布" },
+];
 
 // 推荐话题
 const recommendedTopics = [
-  '生活', '美食', '旅行', '科技', '娱乐', '教育',
-  '健康', '时尚', '音乐', '电影', '游戏', '运动'
-]
+  "生活",
+  "美食",
+  "旅行",
+  "科技",
+  "娱乐",
+  "教育",
+  "健康",
+  "时尚",
+  "音乐",
+  "电影",
+  "游戏",
+  "运动",
+];
 
 // 发布任务列表
-const publishTasks = ref([])
-let taskIdCounter = 1
+const publishTasks = ref([]);
+let taskIdCounter = 1;
 
 // 对话框状态
-const topicDialogVisible = ref(false)
-const customTopic = ref('')
-const currentTask = ref(null)
+const topicDialogVisible = ref(false);
+const customTopic = ref("");
+const currentTask = ref(null);
 
 // 可用账号
-const availableAccounts = computed(() => accountStore.accounts)
+const availableAccounts = computed(() => accountStore.accounts);
 
 // 方法定义
+// 在每个task对象中添加平台选择字段
 const addNewPublishTask = () => {
   const newTask = {
     id: taskIdCounter++,
-    title: '',
-    currentStep: 'video',
-    status: 'draft', // draft, publishing, published, error
+    title: "",
+    currentStep: "video",
+    status: "draft",
     videos: [],
     selectedAccounts: [],
     topics: [],
     scheduleEnabled: false,
-    scheduleTime: '',
+    scheduleTime: "",
     publishing: false,
     publishProgress: 0,
-    publishProgressText: ''
-  }
-  
-  publishTasks.value.push(newTask)
-}
+    publishProgressText: "",
+    // 添加这些字段
+    currentPlatform: 2, // 默认视频号
+    videosPerDay: 1,
+    dailyTimes: ["10:00"],
+    startDays: 0,
+  };
 
+  publishTasks.value.push(newTask);
+};
 const getStepIndex = (stepKey) => {
-  return steps.findIndex(step => step.key === stepKey)
-}
+  return steps.findIndex((step) => step.key === stepKey);
+};
 
 const getTaskStatusType = (status) => {
   const typeMap = {
-    'draft': 'info',
-    'publishing': 'warning',
-    'published': 'success',
-    'error': 'danger'
-  }
-  return typeMap[status] || 'info'
-}
+    draft: "info",
+    publishing: "warning",
+    published: "success",
+    error: "danger",
+  };
+  return typeMap[status] || "info";
+};
 
 const getTaskStatusText = (status) => {
   const textMap = {
-    'draft': '草稿',
-    'publishing': '发布中',
-    'published': '已发布',
-    'error': '发布失败'
-  }
-  return textMap[status] || '未知'
-}
+    draft: "草稿",
+    publishing: "发布中",
+    published: "已发布",
+    error: "发布失败",
+  };
+  return textMap[status] || "未知";
+};
 
 const setCurrentStep = (task, stepKey) => {
-  if (task.publishing) return
-  task.currentStep = stepKey
-}
+  if (task.publishing) return;
+  task.currentStep = stepKey;
+};
 
 const handleVideoUploadSuccess = (response, file, task) => {
   if (response.code === 200) {
-    const filePath = response.data.path || response.data
-    const filename = filePath.split('/').pop()
-    
+    const filePath = response.data.path || response.data;
+    const filename = filePath.split("/").pop();
+
     const videoInfo = {
       name: file.name,
       path: filePath,
       url: materialApi.getMaterialPreviewUrl(filename),
       size: file.size,
-      type: file.type
-    }
-    
-    task.videos.push(videoInfo)
-    ElMessage.success('视频上传成功')
+      type: file.type,
+    };
+
+    task.videos.push(videoInfo);
+    ElMessage.success("视频上传成功");
   } else {
-    ElMessage.error(response.msg || '上传失败')
+    ElMessage.error(response.msg || "上传失败");
   }
-}
+};
 
 const handleVideoUploadError = (error) => {
-  ElMessage.error('视频上传失败')
-  console.error('上传错误:', error)
-}
+  ElMessage.error("视频上传失败");
+  console.error("上传错误:", error);
+};
 
 const selectFromLibrary = async (task) => {
-  ElMessage.info('素材库功能开发中...')
-}
+  ElMessage.info("素材库功能开发中...");
+};
 
 const addMoreVideos = (task) => {
-  selectFromLibrary(task)
-}
+  selectFromLibrary(task);
+};
 
 const removeVideo = (task, index) => {
-  task.videos.splice(index, 1)
-}
+  task.videos.splice(index, 1);
+};
 
 const previewVideo = (video) => {
-  window.open(video.url, '_blank')
-}
+  window.open(video.url, "_blank");
+};
 
 const toggleAccountSelection = (task, account) => {
-  if (account.status !== '正常') return
-  
-  const index = task.selectedAccounts.indexOf(account.id)
+  if (account.status !== "正常") return;
+
+  const index = task.selectedAccounts.indexOf(account.id);
   if (index > -1) {
-    task.selectedAccounts.splice(index, 1)
+    task.selectedAccounts.splice(index, 1);
   } else {
-    task.selectedAccounts.push(account.id)
+    task.selectedAccounts.push(account.id);
   }
-}
+};
 
 const clearAccountSelection = (task) => {
-  task.selectedAccounts = []
-}
+  task.selectedAccounts = [];
+};
 
 const getAccountName = (accountId) => {
-  const account = accountStore.accounts.find(acc => acc.id === accountId)
-  return account ? account.name : accountId
-}
+  const account = accountStore.accounts.find((acc) => acc.id === accountId);
+  return account ? account.name : accountId;
+};
 
 const openTopicSelector = (task) => {
-  currentTask.value = task
-  customTopic.value = ''
-  topicDialogVisible.value = true
-}
+  currentTask.value = task;
+  customTopic.value = "";
+  topicDialogVisible.value = true;
+};
 
 const addCustomTopic = () => {
   if (!customTopic.value.trim()) {
-    ElMessage.warning('请输入话题内容')
-    return
+    ElMessage.warning("请输入话题内容");
+    return;
   }
-  
-  if (currentTask.value && !currentTask.value.topics.includes(customTopic.value.trim())) {
-    currentTask.value.topics.push(customTopic.value.trim())
-    customTopic.value = ''
-    ElMessage.success('话题添加成功')
+
+  if (
+    currentTask.value &&
+    !currentTask.value.topics.includes(customTopic.value.trim())
+  ) {
+    currentTask.value.topics.push(customTopic.value.trim());
+    customTopic.value = "";
+    ElMessage.success("话题添加成功");
   } else {
-    ElMessage.warning('话题已存在')
+    ElMessage.warning("话题已存在");
   }
-}
+};
 
 const toggleRecommendedTopic = (topic) => {
-  if (!currentTask.value) return
-  
-  const index = currentTask.value.topics.indexOf(topic)
+  if (!currentTask.value) return;
+
+  const index = currentTask.value.topics.indexOf(topic);
   if (index > -1) {
-    currentTask.value.topics.splice(index, 1)
+    currentTask.value.topics.splice(index, 1);
   } else {
-    currentTask.value.topics.push(topic)
+    currentTask.value.topics.push(topic);
   }
-}
+};
 
 const removeTopic = (task, index) => {
-  task.topics.splice(index, 1)
-}
+  task.topics.splice(index, 1);
+};
 
 const canProceedToNextStep = (task) => {
   switch (task.currentStep) {
-    case 'video':
-      return task.videos.length > 0
-    case 'accounts':
-      return task.selectedAccounts.length > 0
-    case 'content':
-      return task.title.trim().length > 0
+    case "video":
+      return task.videos.length > 0;
+    case "accounts":
+      return task.selectedAccounts.length > 0;
+    case "content":
+      return task.title.trim().length > 0;
     default:
-      return true
+      return true;
   }
-}
+};
 
 const canPublish = (task) => {
-  return task.videos.length > 0 && 
-         task.selectedAccounts.length > 0 && 
-         task.title.trim().length > 0
-}
+  return (
+    task.videos.length > 0 &&
+    task.selectedAccounts.length > 0 &&
+    task.title.trim().length > 0
+  );
+};
 
 const nextStep = (task) => {
-  const currentIndex = getStepIndex(task.currentStep)
+  const currentIndex = getStepIndex(task.currentStep);
   if (currentIndex < steps.length - 1) {
-    task.currentStep = steps[currentIndex + 1].key
+    task.currentStep = steps[currentIndex + 1].key;
   }
-}
+};
 
 const previousStep = (task) => {
-  const currentIndex = getStepIndex(task.currentStep)
+  const currentIndex = getStepIndex(task.currentStep);
   if (currentIndex > 0) {
-    task.currentStep = steps[currentIndex - 1].key
+    task.currentStep = steps[currentIndex - 1].key;
   }
-}
+};
 
 const publishTask = async (task) => {
-  if (task.publishing) return
-  
-  task.publishing = true
-  task.publishProgress = 0
-  task.publishProgressText = '准备发布...'
-  task.status = 'publishing'
-  
+  if (task.publishing) return;
+
+  task.publishing = true;
+  task.publishProgress = 0;
+  task.publishProgressText = "准备发布...";
+  task.status = "publishing";
+
   try {
-    // 模拟发布过程
-    task.publishProgressText = '正在发布...'
-    task.publishProgress = 50
-    
-    // 这里应该调用实际的发布API
-    setTimeout(() => {
-      task.publishProgress = 100
-      task.publishProgressText = '发布成功'
-      task.status = 'published'
-      task.publishing = false
-      ElMessage.success('发布成功')
-    }, 2000)
-    
+    // 数据验证（保持新版本的验证逻辑）
+    if (task.videos.length === 0) {
+      throw new Error("请先上传视频文件");
+    }
+    if (!task.title.trim()) {
+      throw new Error("请输入标题");
+    }
+    if (task.selectedAccounts.length === 0) {
+      throw new Error("请选择发布账号");
+    }
+
+    // 使用旧版本的数据格式构造（这是关键！）
+    const publishData = {
+      type: task.currentPlatform || 2, // 从任务中获取平台类型，默认视频号
+      title: task.title,
+      tags: task.topics || [], // 话题数组（不带#）
+      fileList: task.videos.map((video) => {
+        // 提取文件路径，去掉可能的UUID前缀
+        let filePath = video.path || video.name;
+        if (filePath.includes("_")) {
+          // 如果包含UUID前缀，提取实际文件名
+          const parts = filePath.split("_");
+          if (parts.length > 1) {
+            filePath = parts.slice(1).join("_");
+          }
+        }
+        return filePath;
+      }),
+      accountList: task.selectedAccounts.map((accountId) => {
+        const account = availableAccounts.value.find(
+          (acc) => acc.id === accountId
+        );
+        return account ? account.filePath : accountId;
+      }),
+      enableTimer: task.scheduleEnabled ? 1 : 0,
+      videosPerDay: task.scheduleEnabled ? task.videosPerDay || 1 : 1,
+      dailyTimes: task.scheduleEnabled
+        ? task.dailyTimes || ["10:00"]
+        : ["10:00"],
+      startDays: task.scheduleEnabled ? task.startDays || 0 : 0,
+      category: 0,
+    };
+
+    console.log("发布数据:", publishData); // 调试用
+
+    task.publishProgress = 30;
+    task.publishProgressText = "正在发布...";
+
+    // 使用旧版本的fetch调用方式（这很重要！）
+    const response = await fetch(`${apiBaseUrl}/postVideo`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders.value,
+      },
+      body: JSON.stringify(publishData),
+    });
+
+    const data = await response.json();
+
+    if (data.code === 200) {
+      task.publishProgress = 100;
+      task.publishProgressText = "发布成功";
+      task.status = "published";
+      task.publishing = false;
+      ElMessage.success("发布成功");
+    } else {
+      throw new Error(data.msg || "发布失败");
+    }
   } catch (error) {
-    console.error('发布错误:', error)
-    task.status = 'error'
-    task.publishProgressText = '发布失败'
-    task.publishing = false
-    ElMessage.error('发布失败')
+    console.error("发布错误:", error);
+    task.status = "error";
+    task.publishProgressText = "发布失败: " + error.message;
+    task.publishing = false;
+    ElMessage.error("发布失败: " + error.message);
   }
-}
+};
 
 const duplicateTask = (task) => {
   const duplicatedTask = {
     ...JSON.parse(JSON.stringify(task)),
     id: taskIdCounter++,
-    status: 'draft',
+    status: "draft",
     publishing: false,
     publishProgress: 0,
-    publishProgressText: ''
-  }
-  
-  publishTasks.value.push(duplicatedTask)
-  ElMessage.success('任务复制成功')
-}
+    publishProgressText: "",
+  };
+
+  publishTasks.value.push(duplicatedTask);
+  ElMessage.success("任务复制成功");
+};
 
 const deleteTask = (task) => {
-  ElMessageBox.confirm(
-    '确定要删除这个发布任务吗？',
-    '删除确认',
-    {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    const index = publishTasks.value.indexOf(task)
-    if (index > -1) {
-      publishTasks.value.splice(index, 1)
-      ElMessage.success('任务删除成功')
-    }
-  }).catch(() => {})
-}
+  ElMessageBox.confirm("确定要删除这个发布任务吗？", "删除确认", {
+    confirmButtonText: "确定删除",
+    cancelButtonText: "取消",
+    type: "warning",
+  })
+    .then(() => {
+      const index = publishTasks.value.indexOf(task);
+      if (index > -1) {
+        publishTasks.value.splice(index, 1);
+        ElMessage.success("任务删除成功");
+      }
+    })
+    .catch(() => {});
+};
 
 const formatFileSize = (size) => {
-  const mb = size / (1024 * 1024)
-  return mb.toFixed(1) + 'MB'
-}
+  const mb = size / (1024 * 1024);
+  return mb.toFixed(1) + "MB";
+};
 
 // 初始化
 onMounted(() => {
   // 创建一个默认任务
-  addNewPublishTask()
-})
+  addNewPublishTask();
+});
 </script>
 
 <style lang="scss" scoped>
 // 变量定义
-$primary: #5B73DE;
-$success: #10B981;
-$warning: #F59E0B;
-$danger: #EF4444;
-$info: #6B7280;
+$primary: #5b73de;
+$success: #10b981;
+$warning: #f59e0b;
+$danger: #ef4444;
+$info: #6b7280;
 
-$bg-light: #F8FAFC;
-$bg-white: #FFFFFF;
-$bg-gray: #F1F5F9;
+$bg-light: #f8fafc;
+$bg-white: #ffffff;
+$bg-gray: #f1f5f9;
 
-$text-primary: #1E293B;
-$text-secondary: #64748B;
-$text-muted: #94A3B8;
+$text-primary: #1e293b;
+$text-secondary: #64748b;
+$text-muted: #94a3b8;
 
-$border-light: #E2E8F0;
+$border-light: #e2e8f0;
 $shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+  0 2px 4px -1px rgba(0, 0, 0, 0.06);
+$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+  0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
 $radius-sm: 4px;
 $radius-md: 8px;
@@ -859,7 +946,7 @@ $space-2xl: 48px;
     position: relative;
 
     &::before {
-      content: '';
+      content: "";
       position: absolute;
       top: 20px;
       left: 20px;
@@ -1356,7 +1443,8 @@ $space-2xl: 48px;
     padding-top: $space-lg;
     border-top: 1px solid $border-light;
 
-    .nav-left, .nav-right {
+    .nav-left,
+    .nav-right {
       display: flex;
       gap: $space-sm;
     }
