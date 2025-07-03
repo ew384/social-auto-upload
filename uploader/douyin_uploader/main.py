@@ -113,8 +113,11 @@ class DouYinVideo(object):
         douyin_logger.info(f'[-] 正在打开主页...')
         await page.wait_for_url("https://creator.douyin.com/creator-micro/content/publish?enter_from=publish_page")
         # 点击 "上传视频" 按钮
-        await page.locator("div[class^='container'] input").set_input_files(self.file_path)
-
+        try:
+            await page.locator('input[type="file"][accept*="video"]').first.set_input_files(self.file_path)
+        except:
+            # 备选：通用文件输入框的第一个
+            await page.locator('input[type="file"]').first.set_input_files(self.file_path)
         # 等待页面跳转到指定的 URL 2025.01.08修改在原有基础上兼容两种页面
         while True:
             try:
