@@ -18,9 +18,9 @@ async def cookie_auth(account_file):
         # 创建一个新的页面
         page = await context.new_page()
         # 访问指定的 URL
-        await page.goto("https://creator.douyin.com/creator-micro/content/upload")
+        await page.goto("https://creator.douyin.com/creator-micro/content/post/video?enter_from=publish_page")
         try:
-            await page.wait_for_url("https://creator.douyin.com/creator-micro/content/upload", timeout=5000)
+            await page.wait_for_url("https://creator.douyin.com/creator-micro/content/post/video?enter_from=publish_page", timeout=5000)
         except:
             print("[+] 等待5秒 cookie 失效")
             await context.close()
@@ -107,11 +107,11 @@ class DouYinVideo(object):
         # 创建一个新的页面
         page = await context.new_page()
         # 访问指定的 URL
-        await page.goto("https://creator.douyin.com/creator-micro/content/upload")
+        await page.goto("https://creator.douyin.com/creator-micro/content/publish?enter_from=publish_page")
         douyin_logger.info(f'[+]正在上传-------{self.title}.mp4')
         # 等待页面跳转到指定的 URL，没进入，则自动等待到超时
         douyin_logger.info(f'[-] 正在打开主页...')
-        await page.wait_for_url("https://creator.douyin.com/creator-micro/content/upload")
+        await page.wait_for_url("https://creator.douyin.com/creator-micro/content/publish?enter_from=publish_page")
         # 点击 "上传视频" 按钮
         await page.locator("div[class^='container'] input").set_input_files(self.file_path)
 

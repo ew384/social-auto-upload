@@ -14,6 +14,8 @@ from werkzeug.utils import secure_filename
 import threading
 import time
 from utils.video_utils import is_video_file
+import sqlite3
+from utils.files_times import get_title_and_hashtags
 # 导入现有的上传模块
 from cli_main import main as cli_main
 import sys
@@ -76,73 +78,151 @@ class UploadTask:
         }
 
 async def run_upload_task(task):
-    """异步执行上传任务"""
+    """异步执行上传任务 - 直接调用上传逻辑"""
     try:
         task.status = 'running'
         task.started_at = datetime.now()
         task.message = '开始上传...'
         task.progress = 10
         
-        # 构建CLI命令
-        cmd = [
-            'python', 'cli_main.py',
-            task.platform,
-            task.account,
-            'upload',
-            task.video_file
-        ]
-        if task.title:
-            cmd.extend(['--title', task.title])
-
-        if task.description:  # 这里用 description 作为 tags
-            cmd.extend(['--tags', task.description])
-
-        if task.publish_type == 0:
-            cmd.extend(['-pt', '0'])
-        elif task.publish_type == 1 and task.schedule:
-            cmd.extend(['-pt', '1', '-t', task.schedule])
+        # 验证文件存在
+        if not os.path.exists(task.video_file):
+            raise FileNotFoundError(f"视频文件不存在: {task.video_file}")
         
-        task.message = '执行上传命令...'
+        # 验证文件格式
+        video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v', '.3gp', '.3g2'}
+        file_ext = Path(task.video_file).suffix.lower()
+        if file_ext not in video_extensions:
+            print(f"警告：{file_ext} 可能不是支持的视频格式")
+        
+        task.message = '获取账号信息...'
+        task.progress = 20
+        
+        # 获取账号文件路径
+        account_file = get_account_file_from_db_api(task.platform, task.account)
+        if not account_file.exists():
+            raise FileNotFoundError(f"未找到平台 {task.platform} 账号 {task.account} 的有效cookie文件")
+        
+        task.message = '解析标题和标签...'
         task.progress = 30
         
-        # 执行CLI命令
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        )
+        # 获取标题和标签
+        title, tags = get_title_and_hashtags(task.video_file, task.title, task.description)
         
-        task.progress = 50
-        task.message = '上传中...'
-        
-        stdout, stderr = await process.communicate()
-        
-        if process.returncode == 0:
-            task.status = 'completed'
-            task.progress = 100
-            task.message = '上传成功'
-            task.completed_at = datetime.now()
+        # 处理发布时间
+        if task.publish_type == 0:
+            publish_date = 0  # 立即发布
         else:
-            task.status = 'failed'
-            task.error = f"上传失败: {stderr.decode('utf-8')}"
-            task.message = '上传失败'
-            task.completed_at = datetime.now()
+            if task.schedule:
+                publish_date = datetime.strptime(task.schedule, '%Y-%m-%d %H:%M')
+            else:
+                publish_date = 0
+        
+        task.message = '初始化上传器...'
+        task.progress = 40
+        
+        # 根据平台选择对应的上传器
+        if task.platform == 'douyin':
+            from uploader.douyin_uploader.main import douyin_setup, DouYinVideo
             
+            task.message = '设置抖音环境...'
+            await douyin_setup(str(account_file), handle=False)
+            
+            task.message = '开始上传到抖音...'
+            task.progress = 60
+            
+            app = DouYinVideo(title, task.video_file, tags, publish_date, str(account_file))
+            await app.main()
+            
+        elif task.platform == 'tencent':
+            from uploader.tencent_uploader.main import weixin_setup, TencentVideo
+            from utils.constant import TencentZoneTypes
+            
+            task.message = '设置微信视频号环境...'
+            await weixin_setup(str(account_file), handle=True)
+            
+            task.message = '开始上传到微信视频号...'
+            task.progress = 60
+            
+            category = TencentZoneTypes.LIFESTYLE.value
+            app = TencentVideo(title, task.video_file, tags, publish_date, str(account_file), category)
+            await app.main()
+            
+        elif task.platform == 'tiktok':
+            from uploader.tk_uploader.main_chrome import tiktok_setup, TiktokVideo
+            
+            task.message = '设置TikTok环境...'
+            await tiktok_setup(str(account_file), handle=True)
+            
+            task.message = '开始上传到TikTok...'
+            task.progress = 60
+            
+            app = TiktokVideo(title, task.video_file, tags, publish_date, str(account_file))
+            await app.main()
+            
+        elif task.platform == 'kuaishou':
+            from uploader.ks_uploader.main import ks_setup, KSVideo
+            
+            task.message = '设置快手环境...'
+            await ks_setup(str(account_file), handle=True)
+            
+            task.message = '开始上传到快手...'
+            task.progress = 60
+            
+            app = KSVideo(title, task.video_file, tags, publish_date, str(account_file))
+            await app.main()
+            
+        else:
+            raise ValueError(f"不支持的平台: {task.platform}")
+        
+        task.status = 'completed'
+        task.progress = 100
+        task.message = '上传成功'
+        task.completed_at = datetime.now()
+        
     except Exception as e:
         task.status = 'failed'
-        task.error = f"执行异常: {str(e)}"
-        task.message = '执行异常'
+        task.error = f"上传失败: {str(e)}"
+        task.message = '上传失败'
         task.completed_at = datetime.now()
+        print(f"任务执行异常: {e}")
+        import traceback
+        traceback.print_exc()
     
     finally:
-        # 清理临时文件
+        # 清理临时文件（只清理上传的临时文件，不清理用户指定的文件）
         try:
-            if os.path.exists(task.video_file):
-                os.remove(task.video_file)
+            if task.video_file.startswith(app.config['UPLOAD_FOLDER']):
+                if os.path.exists(task.video_file):
+                    os.remove(task.video_file)
         except:
             pass
 
+def get_account_file_from_db_api(platform, account_name):
+    """API版本的获取账号文件函数"""
+    platform_map = {
+        "xiaohongshu": 1,
+        "tencent": 2, 
+        "douyin": 3,
+        "kuaishou": 4,
+        "tiktok": 5
+    }
+    
+    # 导入BASE_DIR
+    from conf import BASE_DIR
+    
+    with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT filePath FROM user_info 
+            WHERE type = ? AND userName = ? AND status = 1
+        ''', (platform_map[platform], account_name))
+        
+        result = cursor.fetchone()
+        if result:
+            return Path(BASE_DIR / "cookiesFile" / result[0])
+        else:
+            raise FileNotFoundError(f"未找到平台 {platform} 账号 {account_name} 的有效cookie文件")
 def run_task_in_thread(task):
     """在新线程中运行异步任务"""
     loop = asyncio.new_event_loop()
@@ -328,8 +408,8 @@ if __name__ == '__main__':
     print("   GET  /api/tasks - 获取所有任务")
     print("   GET  /api/platforms - 获取支持的平台")
     print("\n💡 使用示例:")
-    print("curl -X POST http://localhost:5001/api/upload/simple \\")
+    print("curl -X POST http://127.0.0.1:5001/api/upload/simple \\")
     print("  -H 'Content-Type: application/json' \\")
     print("  -d '{\"platform\":\"douyin\",\"account\":\"endian\",\"video_file\":\"./videos/demo.mp4\",\"title\":\"测试视频\"}'")
     
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='127.0.0.1', port=5001, debug=True)
