@@ -121,22 +121,26 @@
           :key="account.id"
           class="account-card"
         >
-          <!-- 平台标识 -->
-          <div :class="['platform-badge', getPlatformClass(account.platform)]">
-            <component :is="getPlatformIcon(account.platform)" class="platform-icon" />
-            <span class="platform-name">{{ account.platform }}</span>
-          </div>
-
-          <!-- 账号信息 -->
+          <!-- 账号信息 - 新的左右布局 -->
           <div class="account-info">
-            <div class="account-avatar">
-              <el-avatar :size="48" :src="account.avatar" />
+            <!-- 左侧头像区域 -->
+            <div class="avatar-container">
+              <div class="account-avatar">
+                <el-avatar :size="56" :src="account.avatar || ''" />
+              </div>
+              <!-- 平台logo -->
+              <div class="platform-logo">
+                <img :src="getPlatformLogo(account.platform)" :alt="account.platform" />
+              </div>
+              <!-- 状态指示点 -->
               <div :class="['status-dot', account.status === '正常' ? 'online' : 'offline']"></div>
             </div>
 
+            <!-- 右侧账号详情 -->
             <div class="account-details">
               <h3 class="account-name">{{ account.name }}</h3>
               <div class="account-meta">
+                <span class="platform-text">{{ account.platform }}</span>
                 <el-tag 
                   :type="account.status === '正常' ? 'success' : 'danger'" 
                   size="small"
@@ -148,20 +152,19 @@
             </div>
           </div>
 
-          <!-- 操作按钮 -->
+          <!-- 操作按钮 - 悬停显示 -->
           <div class="account-actions">
-            <el-button size="small" @click="handleEdit(account)" class="action-btn">
+            <el-button size="small" @click="handleEdit(account)" class="action-btn" title="编辑">
               <el-icon><Edit /></el-icon>
-              编辑
             </el-button>
             <el-button 
               size="small" 
               type="danger" 
               @click="handleDelete(account)"
               class="action-btn danger"
+              title="删除"
             >
               <el-icon><Delete /></el-icon>
-              删除
             </el-button>
           </div>
         </div>
@@ -397,7 +400,15 @@ const fetchAccounts = async (forceCheck = false) => {
     appStore.setAccountRefreshing(false);
   }
 };
-
+const getPlatformLogo = (platform) => {
+  const logoMap = {
+    抖音: "/src/assets/logos/douyin.png",
+    快手: "/src/assets/logos/kuaishou.png",
+    视频号: "/src/assets/logos/wechat_shipinghao.png",
+    小红书: "/src/assets/logos/xiaohongshu.jpg",
+  };
+  return logoMap[platform] || "";
+};
 const handleSearch = () => {
   // 搜索逻辑已通过计算属性实现
 };
@@ -825,50 +836,8 @@ $space-2xl: 48px;
     overflow: hidden;
 
     &:hover {
-      transform: translateY(-4px);
+      transform: translateY(-2px);
       box-shadow: $shadow-lg;
-    }
-
-    .platform-badge {
-      position: absolute;
-      top: 0;
-      right: 0;
-      padding: $space-xs $space-sm;
-      border-radius: 0 $radius-xl 0 $radius-lg;
-      display: flex;
-      align-items: center;
-      gap: $space-xs;
-      font-size: 12px;
-      font-weight: 600;
-      color: white;
-
-      .platform-icon {
-        font-size: 14px;
-      }
-
-      &.douyin {
-        background: linear-gradient(135deg, $platform-douyin 0%, #ff6b8a 100%);
-      }
-
-      &.kuaishou {
-        background: linear-gradient(
-          135deg,
-          $platform-kuaishou 0%,
-          #ff8533 100%
-        );
-      }
-
-      &.wechat {
-        background: linear-gradient(135deg, $platform-wechat 0%, #3dd68c 100%);
-      }
-
-      &.xiaohongshu {
-        background: linear-gradient(
-          135deg,
-          $platform-xiaohongshu 0%,
-          #ff5b75 100%
-        );
-      }
     }
 
     .account-info {
@@ -877,17 +846,50 @@ $space-2xl: 48px;
       gap: $space-md;
       margin-bottom: $space-lg;
 
-      .account-avatar {
+      .avatar-container {
         position: relative;
+        flex-shrink: 0;
+
+        .account-avatar {
+          position: relative;
+
+          :deep(.el-avatar) {
+            border: 3px solid #f1f5f9;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          }
+        }
+
+        .platform-logo {
+          position: absolute;
+          bottom: -4px;
+          right: -4px;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+          border: 1px solid white;
+
+          img {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+          }
+        }
 
         .status-dot {
           position: absolute;
-          bottom: 2px;
-          right: 2px;
+          top: 2px;
+          right: 8px;
           width: 12px;
           height: 12px;
           border-radius: 50%;
           border: 2px solid white;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 
           &.online {
             background-color: $success;
@@ -901,34 +903,69 @@ $space-2xl: 48px;
 
       .account-details {
         flex: 1;
+        min-width: 0; // 防止文字溢出
 
         .account-name {
           font-size: 16px;
           font-weight: 600;
           color: $text-primary;
           margin: 0 0 $space-xs 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .account-meta {
           display: flex;
           align-items: center;
-          gap: $space-xs;
+          gap: $space-sm;
+          flex-wrap: wrap;
+
+          .platform-text {
+            font-size: 13px;
+            color: $text-secondary;
+            background: $bg-gray;
+            padding: 2px 8px;
+            border-radius: $radius-sm;
+            font-weight: 500;
+          }
         }
       }
     }
 
     .account-actions {
+      position: absolute;
+      top: $space-md;
+      right: $space-md;
       display: flex;
-      gap: $space-sm;
+      gap: $space-xs;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: all 0.3s ease;
 
       .action-btn {
-        flex: 1;
+        width: 28px;
+        height: 28px;
+        min-height: 28px;
+        padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: $space-xs;
-        border-radius: $radius-md;
+        border-radius: 50%;
         font-weight: 500;
+        transition: all 0.3s ease;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+
+        .el-icon {
+          font-size: 14px;
+        }
+
+        &:hover {
+          transform: scale(1.1);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
 
         &.danger {
           &:hover {
@@ -938,6 +975,11 @@ $space-2xl: 48px;
           }
         }
       }
+    }
+
+    &:hover .account-actions {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 }
