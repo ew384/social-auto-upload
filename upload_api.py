@@ -205,7 +205,12 @@ def get_account_file_from_db_api(platform, account_name):
         "tencent": 2, 
         "douyin": 3,
         "kuaishou": 4,
-        "tiktok": 5
+        "tiktok": 5,
+        "小红书": 1,
+        "微信视频号": 2,
+        "抖音": 3,
+        "快手": 4,
+        "TikTok": 5
     }
     
     # 导入BASE_DIR

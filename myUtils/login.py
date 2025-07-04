@@ -31,7 +31,16 @@ async def douyin_cookie_gen(id,status_queue):
         original_url = page.url
         img_locator = page.get_by_role("img", name="二维码")
         # 获取 src 属性值
-        src = await img_locator.get_attribute("src")
+        try:
+            # 首先等待元素出现
+            await img_locator.wait_for(state="visible", timeout=60000)
+            # 然后获取属性
+            src = await img_locator.get_attribute("src", timeout=10000)
+        except TimeoutError:
+            # 如果仍然超时，可以尝试刷新页面或重试
+            await page.reload()
+            await img_locator.wait_for(state="visible", timeout=60000)
+            src = await img_locator.get_attribute("src", timeout=10000)
         print("✅ 图片地址:", src)
         status_queue.put(src)
         # 监听页面的 'framenavigated' 事件，只关注主框架的变化

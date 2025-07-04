@@ -10,7 +10,7 @@
               <el-icon><VideoCamera /></el-icon>
             </div>
             <transition name="fade">
-              <span v-show="!isCollapsed" class="logo-text">SAU运营系统</span>
+              <span v-show="!isCollapsed" class="logo-text">自动化发布系统</span>
             </transition>
           </div>
         </div>
