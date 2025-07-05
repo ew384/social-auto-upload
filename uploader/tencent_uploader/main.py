@@ -131,7 +131,7 @@ class TencentVideo(object):
         await page.locator('div.media-status-content div.tag-inner:has-text("删除")').click()
         await page.get_by_role('button', name="删除", exact=True).click()
         file_input = page.locator('input[type="file"]')
-        await file_input.set_input_files(self.file_path)
+        await file_input.set_input_files(self.file_path,timeout=60000)
 
     async def upload(self, playwright: Playwright) -> None:
         # 使用 Chromium (这里使用系统内浏览器，用chromium 会造成h264错误
@@ -147,9 +147,10 @@ class TencentVideo(object):
         tencent_logger.info(f'[+]正在上传-------{self.title}')
         # 等待页面跳转到指定的 URL，没进入，则自动等待到超时
         await page.wait_for_url("https://channels.weixin.qq.com/platform/post/create")
-        # await page.wait_for_selector('input[type="file"]', timeout=10000)
-        file_input = page.locator('input[type="file"]')
-        await file_input.set_input_files(self.file_path)
+        #await page.wait_for_selector('input[type="file"]', state='attached', timeout=60000)
+        #file_input = page.locator('input[type="file"]')
+        #await file_input.set_input_files(self.file_path, timeout=120000)
+        await self.upload_file_to_shadow_dom(page)
         # 填充标题和话题
         await self.add_title_tags(page)
         # 添加商品
@@ -174,6 +175,101 @@ class TencentVideo(object):
         await context.close()
         await browser.close()
 
+    async def upload_file_to_shadow_dom(self, page):
+        """处理 shadow DOM 中的文件上传"""
+        await page.wait_for_selector('wujie-app', timeout=30000)
+        await asyncio.sleep(2)
+        
+        # 处理文件路径：如果文件不存在，查找带UUID的文件
+        actual_file_path = self.file_path
+        if not os.path.exists(self.file_path):
+            import glob
+            # 提取原始文件名
+            original_filename = os.path.basename(self.file_path)
+            video_dir = os.path.dirname(self.file_path)
+            
+            # 查找匹配的文件（包含UUID前缀的文件）
+            pattern = os.path.join(video_dir, f"*_{original_filename}")
+            matching_files = glob.glob(pattern)
+            
+            if matching_files:
+                # 选择最新的文件
+                matching_files.sort(key=os.path.getmtime, reverse=True)
+                actual_file_path = matching_files[0]
+                tencent_logger.info(f"找到实际文件: {original_filename} -> {os.path.basename(actual_file_path)}")
+            else:
+                raise FileNotFoundError(f"找不到文件: {self.file_path}")
+        
+        # 获取文件的 base64 数据
+        import base64
+        with open(actual_file_path, 'rb') as f:
+            file_data = base64.b64encode(f.read()).decode()
+        
+        file_name = os.path.basename(actual_file_path)
+        
+        upload_script = f'''
+        (function() {{
+            try {{
+                const wujieApp = document.querySelector('wujie-app');
+                if (!wujieApp || !wujieApp.shadowRoot) {{
+                    return {{ success: false, error: '未找到 wujie-app 或 shadow DOM' }};
+                }}
+                
+                const shadowDoc = wujieApp.shadowRoot;
+                const uploadArea = shadowDoc.querySelector('.center');
+                if (!uploadArea) {{
+                    return {{ success: false, error: '未找到上传区域' }};
+                }}
+                
+                // 点击上传区域
+                uploadArea.click();
+                
+                // 等待并查找文件输入框
+                let fileInput = shadowDoc.querySelector('input[type="file"]');
+                if (!fileInput) {{
+                    return {{ success: false, error: '未找到文件输入框' }};
+                }}
+                
+                // 将 base64 转换为 Blob
+                const byteCharacters = atob('{file_data}');
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {{
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }}
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], {{ type: 'video/mp4' }});
+                
+                // 创建 File 对象
+                const file = new File([blob], '{file_name}', {{
+                    type: 'video/mp4',
+                    lastModified: Date.now()
+                }});
+                
+                // 设置文件到 input
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                Object.defineProperty(fileInput, 'files', {{
+                    value: dataTransfer.files,
+                    configurable: true
+                }});
+                
+                // 触发事件
+                fileInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                fileInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                
+                return {{ success: true, fileName: '{file_name}' }};
+                
+            }} catch (e) {{
+                return {{ success: false, error: e.message }};
+            }}
+        }})()
+        '''
+        
+        result = await page.evaluate(upload_script)
+        if not result['success']:
+            raise Exception(f"文件上传失败: {result['error']}")
+        
+        tencent_logger.success(f"文件上传成功: {result['fileName']}")
     async def add_short_title(self, page):
         short_title_element = page.get_by_text("短标题", exact=True).locator("..").locator(
             "xpath=following-sibling::div").locator(
