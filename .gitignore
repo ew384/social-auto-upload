@@ -183,3 +183,11 @@ cookiesFile
 uploadFile
 videoFile
 
+#编译后文件
+sau_backend.spec
+build
+dist
+backend-dist
+final-dist
+sau_frontend/dist-electron/
+sau_frontend/resources/

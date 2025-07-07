@@ -27,7 +27,6 @@ function waitForBackend(maxRetries = 30) {
     const check = () => {
       checkPort(5409).then(portAvailable => {
         if (!portAvailable) {
-          // 端口被占用，说明服务已启动
           console.log('✅ 后端服务已启动')
           resolve()
         } else if (retries < maxRetries) {
@@ -59,17 +58,17 @@ function createWindow() {
     icon: path.join(__dirname, '../public/vite.svg')
   })
 
-  // 等待后端启动后再加载前端
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
     mainWindow.show()
   } else {
     waitForBackend().then(() => {
-      mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+      mainWindow.loadURL('http://localhost:5409')
       mainWindow.show()
     }).catch(err => {
       console.error('后端启动失败:', err)
+      // 如果后端启动失败，加载静态文件
       mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
       mainWindow.show()
     })
@@ -86,8 +85,16 @@ function startPythonBackend() {
     return
   }
 
+  // 修复后端路径
   const backendPath = path.join(process.resourcesPath, 'backend')
-  const pythonExecutable = path.join(backendPath, 'sau_backend')
+  let pythonExecutable = path.join(backendPath, 'sau_backend')
+  
+  // 检查可执行文件是否存在
+  const fs = require('fs')
+  if (!fs.existsSync(pythonExecutable)) {
+    console.error('Python 后端可执行文件不存在:', pythonExecutable)
+    return
+  }
 
   console.log('启动 Python 后端:', pythonExecutable)
   console.log('工作目录:', backendPath)
@@ -123,7 +130,6 @@ function stopPythonBackend() {
     console.log('正在停止 Python 后端...')
     pythonProcess.kill('SIGTERM')
     
-    // 如果5秒后还没停止，强制结束
     setTimeout(() => {
       if (pythonProcess && !pythonProcess.killed) {
         console.log('强制结束 Python 后端')
@@ -213,7 +219,6 @@ app.on('before-quit', () => {
   stopPythonBackend()
 })
 
-// 处理应用退出
 process.on('SIGINT', () => {
   stopPythonBackend()
   app.quit()

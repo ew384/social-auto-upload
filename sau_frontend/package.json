@@ -13,9 +13,11 @@
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "build:frontend": "vite build",
-    "build:electron": "electron-builder",
+    "build:electron": "electron-builder --mac --x64 --publish=never",
     "build:all": "npm run build:frontend && npm run build:electron",
-    "pack": "npm run build:frontend && npm run build:electron"
+    "pack": "npm run build:frontend && npm run build:electron",
+    "build:electron:linux": "electron-builder --linux --x64 --publish=never",
+    "build:electron:win": "electron-builder --win --x64 --publish=never"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -28,57 +30,36 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.3",
-    "concurrently": "8.2.0",
-    "electron": "28.0.0",
-    "electron-builder": "24.6.4",
+    "concurrently": "^8.2.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.4",
     "vite": "^6.3.5",
-    "wait-on": "7.0.1"
+    "wait-on": "^7.0.1"
   },
   "build": {
-    "appId": "com.edanlee.sau",
+    "appId": "com.sau.media.automation",
     "productName": "SAU自媒体自动化运营系统",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
       "dist/**/*",
-      "electron/main.js",
-      "node_modules/**/*"
+      "electron/**/*",
+      "resources/**/*"
     ],
     "extraResources": [
       {
-        "from": "../backend-dist",
+        "from": "resources/backend",
         "to": "backend"
       }
     ],
     "mac": {
-      "icon": "public/vite.svg",
-      "category": "public.app-category.productivity",
       "target": [
         {
-          "target": "dmg",
+          "target": "dir",
           "arch": [
-            "x64",
-            "arm64"
+            "x64"
           ]
-        }
-      ],
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
-    },
-    "dmg": {
-      "title": "SAU自媒体自动化运营系统",
-      "contents": [
-        {
-          "x": 410,
-          "y": 150,
-          "type": "link",
-          "path": "/Applications"
-        },
-        {
-          "x": 130,
-          "y": 150,
-          "type": "file"
         }
       ]
     }
