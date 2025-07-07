@@ -170,7 +170,65 @@
             </div>
 
             <div class="accounts-section">
-              <!-- 账号选择 -->
+              <!-- 新增：分组选择器 -->
+              <div class="group-selector" v-if="accountStore.groups.length > 0">
+                <h5>按分组选择</h5>
+                <div class="groups-grid">
+                  <div 
+                    v-for="group in accountStore.groups"
+                    :key="group.id"
+                    :class="['group-selector-item', { 
+                      'selected': isGroupSelected(task, group.id),
+                      'partial': isGroupPartialSelected(task, group.id)
+                    }]"
+                    @click="toggleGroupSelection(task, group.id)"
+                  >
+                    <div class="group-info">
+                      <div class="group-icon" :style="{ backgroundColor: group.color }">
+                        <el-icon><component :is="getGroupIcon(group.icon)" /></el-icon>
+                      </div>
+                      <div class="group-details">
+                        <span class="group-name">{{ group.name }}</span>
+                        <span class="group-count">{{ getValidAccountsInGroup(group.id).length }} 个账号</span>
+                      </div>
+                    </div>
+                    <div class="group-selection-status">
+                      <el-icon v-if="isGroupSelected(task, group.id)"><Check /></el-icon>
+                      <el-icon v-else-if="isGroupPartialSelected(task, group.id)" class="partial-icon"><Minus /></el-icon>
+                    </div>
+                  </div>
+
+                  <!-- 未分组账号 -->
+                  <div 
+                    :class="['group-selector-item', { 
+                      'selected': isUngroupedSelected(task),
+                      'partial': isUngroupedPartialSelected(task)
+                    }]"
+                    @click="toggleUngroupedSelection(task)"
+                  >
+                    <div class="group-info">
+                      <div class="group-icon ungrouped">
+                        <el-icon><User /></el-icon>
+                      </div>
+                      <div class="group-details">
+                        <span class="group-name">未分组账号</span>
+                        <span class="group-count">{{ getUngroupedValidAccounts().length }} 个账号</span>
+                      </div>
+                    </div>
+                    <div class="group-selection-status">
+                      <el-icon v-if="isUngroupedSelected(task)"><Check /></el-icon>
+                      <el-icon v-else-if="isUngroupedPartialSelected(task)" class="partial-icon"><Minus /></el-icon>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 分隔线 -->
+              <div class="divider" v-if="accountStore.groups.length > 0">
+                <span>或单独选择账号</span>
+              </div>
+
+              <!-- 原有的账号选择网格 -->
               <div class="accounts-grid">
                 <div 
                   v-for="account in availableAccounts" 
@@ -191,6 +249,12 @@
                   <div class="account-info">
                     <div class="account-name">{{ account.name }}</div>
                     <div class="account-platform">{{ account.platform }}</div>
+                    <!-- 显示分组信息 -->
+                    <div v-if="account.group_name" class="account-group">
+                      <el-tag :color="account.group_color" size="small" effect="light">
+                        {{ account.group_name }}
+                      </el-tag>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -446,6 +510,9 @@ import {
   User,
   ArrowLeft,
   ArrowRight,
+  Minus,
+  Star,
+  Flag,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useAccountStore } from "@/stores/account";
@@ -811,10 +878,160 @@ const formatFileSize = (size) => {
 };
 
 // 初始化
-onMounted(() => {
+onMounted(async () => {
   // 创建一个默认任务
   addNewPublishTask();
+
+  // 获取分组信息
+  try {
+    const groupsRes = await accountApi.getGroups();
+    if (groupsRes.code === 200 && groupsRes.data) {
+      accountStore.setGroups(groupsRes.data);
+    }
+  } catch (error) {
+    console.warn("获取分组信息失败:", error);
+  }
 });
+// 新增：分组选择相关方法
+// 获取分组中的有效账号
+const getValidAccountsInGroup = (groupId) => {
+  return availableAccounts.value.filter(
+    (acc) => acc.group_id === groupId && acc.status === "正常"
+  );
+};
+
+// 获取未分组的有效账号
+const getUngroupedValidAccounts = () => {
+  return availableAccounts.value.filter(
+    (acc) => !acc.group_id && acc.status === "正常"
+  );
+};
+
+// 判断分组是否完全选中
+const isGroupSelected = (task, groupId) => {
+  const groupAccounts = getValidAccountsInGroup(groupId);
+  if (groupAccounts.length === 0) return false;
+  return groupAccounts.every((acc) => task.selectedAccounts.includes(acc.id));
+};
+
+// 判断分组是否部分选中
+const isGroupPartialSelected = (task, groupId) => {
+  const groupAccounts = getValidAccountsInGroup(groupId);
+  if (groupAccounts.length === 0) return false;
+  const selectedCount = groupAccounts.filter((acc) =>
+    task.selectedAccounts.includes(acc.id)
+  ).length;
+  return selectedCount > 0 && selectedCount < groupAccounts.length;
+};
+
+// 判断未分组账号是否完全选中
+const isUngroupedSelected = (task) => {
+  const ungroupedAccounts = getUngroupedValidAccounts();
+  if (ungroupedAccounts.length === 0) return false;
+  return ungroupedAccounts.every((acc) =>
+    task.selectedAccounts.includes(acc.id)
+  );
+};
+
+// 判断未分组账号是否部分选中
+const isUngroupedPartialSelected = (task) => {
+  const ungroupedAccounts = getUngroupedValidAccounts();
+  if (ungroupedAccounts.length === 0) return false;
+  const selectedCount = ungroupedAccounts.filter((acc) =>
+    task.selectedAccounts.includes(acc.id)
+  ).length;
+  return selectedCount > 0 && selectedCount < ungroupedAccounts.length;
+};
+
+// 切换分组选择状态
+const toggleGroupSelection = (task, groupId) => {
+  const groupAccounts = getValidAccountsInGroup(groupId);
+  if (groupAccounts.length === 0) return;
+
+  const isSelected = isGroupSelected(task, groupId);
+
+  if (isSelected) {
+    // 如果已选中，则取消选中该分组的所有账号
+    groupAccounts.forEach((acc) => {
+      const index = task.selectedAccounts.indexOf(acc.id);
+      if (index > -1) {
+        task.selectedAccounts.splice(index, 1);
+      }
+    });
+  } else {
+    // 如果未选中，则选中该分组的所有账号
+    groupAccounts.forEach((acc) => {
+      if (!task.selectedAccounts.includes(acc.id)) {
+        task.selectedAccounts.push(acc.id);
+        // 设置平台类型
+        if (task.selectedAccounts.length === 1) {
+          task.currentPlatform = acc.type;
+        }
+      }
+    });
+  }
+};
+
+// 切换未分组账号选择状态
+const toggleUngroupedSelection = (task) => {
+  const ungroupedAccounts = getUngroupedValidAccounts();
+  if (ungroupedAccounts.length === 0) return;
+
+  const isSelected = isUngroupedSelected(task);
+
+  if (isSelected) {
+    // 取消选中所有未分组账号
+    ungroupedAccounts.forEach((acc) => {
+      const index = task.selectedAccounts.indexOf(acc.id);
+      if (index > -1) {
+        task.selectedAccounts.splice(index, 1);
+      }
+    });
+  } else {
+    // 选中所有未分组账号
+    ungroupedAccounts.forEach((acc) => {
+      if (!task.selectedAccounts.includes(acc.id)) {
+        task.selectedAccounts.push(acc.id);
+        if (task.selectedAccounts.length === 1) {
+          task.currentPlatform = acc.type;
+        }
+      }
+    });
+  }
+};
+// 简化的图标映射，只使用确实存在的图标
+const getGroupIcon = (iconName) => {
+  const iconMap = {
+    Users: "User",
+    User: "User",
+    Briefcase: "User",
+    Star: "Star",
+    Heart: "User",
+    Flag: "Flag",
+    Trophy: "Star", // 用 Star 代替
+    Gift: "User",
+    Crown: "Star", // 用 Star 代替
+    Diamond: "Star", // 用 Star 代替
+    Fire: "User",
+    Lightning: "User",
+  };
+  return iconMap[iconName] || "User";
+};
+
+const groupIcons = [
+  "Users",
+  "User",
+  "Briefcase",
+  "Star",
+  "Heart",
+  "Flag",
+  "Trophy",
+  "Gift",
+  "Crown",
+  "Diamond",
+  "Fire",
+  "Lightning",
+];
 </script>
 
 <style lang="scss" scoped>
@@ -1516,6 +1733,130 @@ $space-2xl: 48px;
       flex-direction: column;
       gap: $space-md;
     }
+  }
+}
+// 分组选择器样式
+.group-selector {
+  margin-bottom: $space-xl;
+
+  h5 {
+    font-size: 16px;
+    font-weight: 600;
+    color: $text-primary;
+    margin: 0 0 $space-md 0;
+  }
+
+  .groups-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: $space-md;
+
+    .group-selector-item {
+      background: $bg-gray;
+      border: 2px solid transparent;
+      border-radius: $radius-lg;
+      padding: $space-md;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: $shadow-md;
+        border-color: rgba(91, 115, 222, 0.3);
+      }
+
+      &.selected {
+        border-color: $primary;
+        background-color: rgba(91, 115, 222, 0.1);
+      }
+
+      &.partial {
+        border-color: $warning;
+        background-color: rgba(245, 158, 11, 0.1);
+      }
+
+      .group-info {
+        display: flex;
+        align-items: center;
+        gap: $space-sm;
+
+        .group-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: $radius-md;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          .el-icon {
+            font-size: 18px;
+            color: white;
+          }
+
+          &.ungrouped {
+            background-color: $text-muted;
+          }
+        }
+
+        .group-details {
+          .group-name {
+            display: block;
+            font-weight: 500;
+            color: $text-primary;
+            margin-bottom: 2px;
+          }
+
+          .group-count {
+            font-size: 12px;
+            color: $text-secondary;
+          }
+        }
+      }
+
+      .group-selection-status {
+        .el-icon {
+          font-size: 20px;
+          color: $primary;
+
+          &.partial-icon {
+            color: $warning;
+          }
+        }
+      }
+    }
+  }
+}
+
+.divider {
+  text-align: center;
+  margin: $space-xl 0;
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background-color: $border-light;
+  }
+
+  span {
+    background-color: $bg-light;
+    padding: 0 $space-md;
+    color: $text-secondary;
+    font-size: 14px;
+  }
+}
+
+// 账号卡片中的分组标签
+.account-card {
+  .account-group {
+    margin-top: 4px;
   }
 }
 </style>
