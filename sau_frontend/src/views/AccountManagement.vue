@@ -289,6 +289,7 @@
               </div>
               
               <div class="group-accounts" v-if="ungroupedAccounts.length > 0">
+                <!-- 未分组账号 -->
                 <div 
                   v-for="account in ungroupedAccounts"
                   :key="account.id"
@@ -307,14 +308,14 @@
             </div>
 
             <!-- 分组区域 -->
-            <div 
-              v-for="group in accountStore.groups"
-              :key="group.id"
-              class="group-card"
-              @dragover="handleDragOver"
-              @dragleave="handleDragLeave"
-              @drop="handleDrop(group.id, $event)"
-            >
+              <div 
+                v-for="group in accountStore.groups"
+                :key="group.id"
+                class="group-card"
+                @dragover="handleDragOver"
+                @dragleave="handleDragLeave"
+                @drop="handleDrop(group.id, $event)"
+              >
               <div class="group-header">
                 <div class="group-info">
                   <div class="group-icon" :style="{ backgroundColor: group.color }">
@@ -924,37 +925,105 @@ const getGroupIcon = (iconName) => {
 };
 
 // 拖拽开始
+// 拖拽开始 - 添加详细调试
 const handleDragStart = (account, event) => {
+  console.log("=== 拖拽开始 ===");
+  console.log("账号数据:", account);
+  console.log("账号ID:", account?.id);
+  console.log("账号名称:", account?.name);
+
+  // 确保账号数据完整
+  if (!account || !account.id) {
+    console.error("❌ 账号数据不完整:", account);
+    event.preventDefault();
+    return;
+  }
+
   draggedAccount.value = account;
+  console.log("✅ 设置拖拽账号:", draggedAccount.value);
+
   event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", account.id.toString());
 
   // 添加拖拽样式
   event.target.style.opacity = "0.5";
 };
 
+// 拖拽悬停 - 添加调试
 const handleDragOver = (event) => {
   event.preventDefault();
   event.dataTransfer.dropEffect = "move";
 
+  console.log("=== 拖拽悬停 ===");
+  console.log("当前拖拽账号:", draggedAccount.value);
+
   // 添加悬停样式
   const groupCard = event.currentTarget;
   groupCard.classList.add("drag-over");
+
+  // 如果 draggedAccount 丢失，尝试恢复
+  if (!draggedAccount.value) {
+    console.warn("⚠️ 拖拽账号数据丢失，尝试恢复...");
+    const accountId = event.dataTransfer.getData("text/plain");
+    console.log("从 dataTransfer 获取账号ID:", accountId);
+
+    if (accountId) {
+      const account = accountStore.accounts.find((acc) => acc.id == accountId);
+      console.log("找到的账号:", account);
+      if (account) {
+        draggedAccount.value = account;
+        console.log("✅ 恢复拖拽账号数据:", account.name);
+      }
+    }
+  }
 };
 
-const handleDragLeave = (event) => {
-  // 移除悬停样式
-  const groupCard = event.currentTarget;
-  groupCard.classList.remove("drag-over");
-};
-
+// 拖拽放置 - 添加详细调试
 const handleDrop = async (groupId, event) => {
   event.preventDefault();
 
+  console.log("=== 拖拽放置 ===");
+  console.log("目标分组ID:", groupId);
+  console.log("拖拽账号数据:", draggedAccount.value);
+  console.log("拖拽账号是否存在:", !!draggedAccount.value);
+  console.log("拖拽账号ID:", draggedAccount.value?.id);
+
   // 移除悬停样式
   const groupCard = event.currentTarget;
   groupCard.classList.remove("drag-over");
 
-  if (!draggedAccount.value) return;
+  // 尝试从 dataTransfer 恢复数据
+  if (!draggedAccount.value) {
+    console.warn("⚠️ 拖拽账号为空，尝试从 dataTransfer 恢复...");
+    const accountId = event.dataTransfer.getData("text/plain");
+    console.log("从 dataTransfer 获取账号ID:", accountId);
+
+    if (accountId) {
+      const account = accountStore.accounts.find((acc) => acc.id == accountId);
+      console.log("找到的账号:", account);
+      if (account) {
+        draggedAccount.value = account;
+        console.log("✅ 恢复成功:", account.name);
+      }
+    }
+  }
+
+  // 最终检查
+  if (!draggedAccount.value || !draggedAccount.value.id) {
+    console.error("❌ 拖拽账号数据无效，无法继续操作");
+    console.log("draggedAccount.value:", draggedAccount.value);
+    draggedAccount.value = null;
+    return;
+  }
+
+  // 检查是否拖拽到同一个分组
+  if (draggedAccount.value.group_id === groupId) {
+    console.log("ℹ️ 账号已在此分组中，无需移动");
+    draggedAccount.value = null;
+    return;
+  }
+
+  console.log("🚀 开始调用API更新分组...");
 
   try {
     const res = await accountApi.updateAccountGroup({
@@ -962,38 +1031,78 @@ const handleDrop = async (groupId, event) => {
       group_id: groupId,
     });
 
+    console.log("API响应:", res);
+
     if (res.code === 200) {
       const group = accountStore.getGroupById(groupId);
       accountStore.updateAccountGroup(draggedAccount.value.id, groupId, group);
       ElMessage.success("账号分组更新成功");
+      console.log("✅ 分组更新成功");
     } else {
       ElMessage.error(res.msg || "分组更新失败");
+      console.error("❌ API返回错误:", res);
     }
   } catch (error) {
-    console.error("更新账号分组失败:", error);
+    console.error("❌ 更新账号分组失败:", error);
     ElMessage.error("分组更新失败");
   } finally {
     draggedAccount.value = null;
+    console.log("🧹 清理拖拽状态");
   }
 };
 
+// 拖拽结束 - 添加调试
 const handleDragEnd = (event) => {
+  console.log("=== 拖拽结束 ===");
+  console.log("恢复透明度");
+
   // 恢复透明度
   event.target.style.opacity = "1";
-  draggedAccount.value = null;
+
+  // 延迟清理，确保 drop 事件先执行
+  setTimeout(() => {
+    if (draggedAccount.value) {
+      console.log("延迟清理拖拽数据:", draggedAccount.value.name);
+      draggedAccount.value = null;
+    }
+  }, 200);
+};
+const handleDragLeave = (event) => {
+  console.log("=== 拖拽离开 ===");
+
+  // 检查是否真的离开了分组区域（而不是进入子元素）
+  const groupCard = event.currentTarget;
+  const relatedTarget = event.relatedTarget;
+
+  // 如果鼠标移动到了子元素，不移除样式
+  if (relatedTarget && groupCard.contains(relatedTarget)) {
+    console.log("移动到子元素，保持悬停样式");
+    return;
+  }
+
+  console.log("真正离开分组区域，移除悬停样式");
+  groupCard.classList.remove("drag-over");
 };
 // 移动账号到指定分组
+// 移动账号到指定分组 - 修改版
 const moveAccountToGroup = async (accountId, groupId) => {
+  console.log("移出分组操作:", { accountId, groupId }); // 添加调试
+
   try {
     const res = await accountApi.updateAccountGroup({
       account_id: accountId,
       group_id: groupId,
     });
 
+    console.log("API响应:", res); // 添加调试
+
     if (res.code === 200) {
       const group = groupId ? accountStore.getGroupById(groupId) : null;
       accountStore.updateAccountGroup(accountId, groupId, group);
       ElMessage.success(groupId ? "账号已移入分组" : "账号已移出分组");
+
+      // 重要：重新获取最新数据，确保数据同步
+      await fetchAccounts(false);
     } else {
       ElMessage.error(res.msg || "操作失败");
     }
@@ -1002,7 +1111,6 @@ const moveAccountToGroup = async (accountId, groupId) => {
     ElMessage.error("操作失败");
   }
 };
-
 // 添加分组
 const handleAddGroup = () => {
   groupDialogType.value = "add";
@@ -1040,6 +1148,13 @@ const handleDeleteGroup = (group) => {
         if (res.code === 200) {
           accountStore.deleteGroup(group.id);
           ElMessage.success("分组删除成功");
+
+          // 重要：重新获取账号和分组数据
+          await fetchAccounts(false);
+          const groupsRes = await accountApi.getGroups();
+          if (groupsRes.code === 200) {
+            accountStore.setGroups(groupsRes.data);
+          }
         } else {
           ElMessage.error(res.msg || "删除失败");
         }
@@ -1070,8 +1185,14 @@ const submitGroupForm = () => {
         } else {
           res = await accountApi.updateGroup(groupForm);
           if (res.code === 200) {
-            accountStore.updateGroup(groupForm.id, groupForm);
+            // 不只是更新 Store，也要重新获取最新数据
             ElMessage.success("分组更新成功");
+            const groupsRes = await accountApi.getGroups();
+            if (groupsRes.code === 200) {
+              accountStore.setGroups(groupsRes.data);
+            }
+            // 也重新获取账号数据，因为分组信息可能影响账号显示
+            await fetchAccounts(false);
           }
         }
 
