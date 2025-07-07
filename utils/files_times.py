@@ -105,7 +105,7 @@ def generate_schedule_time_next_day(total_videos, videos_per_day = 1, daily_time
     if daily_times is None:
         # Default times to publish videos if not provided
         daily_times = [6, 11, 14, 16, 22]
-
+    daily_times = [int(time) for time in daily_times]
     if videos_per_day > len(daily_times):
         raise ValueError("videos_per_day should not exceed the length of daily_times")
 
