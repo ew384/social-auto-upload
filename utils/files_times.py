@@ -84,7 +84,6 @@ def get_title_and_hashtags(filename, title_override=None, tags_override=None):
     
     return title, hashtags
 
-
 def generate_schedule_time_next_day(total_videos, videos_per_day = 1, daily_times=None, timestamps=False, start_days=0):
     """
     Generate a schedule for video uploads, starting from the next day.
@@ -93,6 +92,7 @@ def generate_schedule_time_next_day(total_videos, videos_per_day = 1, daily_time
     - total_videos: Total number of videos to be uploaded.
     - videos_per_day: Number of videos to be uploaded each day.
     - daily_times: Optional list of specific times of the day to publish the videos.
+                   Can be either integers (hours) or strings in "HH:MM" format.
     - timestamps: Boolean to decide whether to return timestamps or datetime objects.
     - start_days: Start from after start_days.
 
@@ -105,8 +105,31 @@ def generate_schedule_time_next_day(total_videos, videos_per_day = 1, daily_time
     if daily_times is None:
         # Default times to publish videos if not provided
         daily_times = [6, 11, 14, 16, 22]
-    daily_times = [int(time) for time in daily_times]
-    if videos_per_day > len(daily_times):
+    
+    # 解析时间格式 - 支持整数小时和 "HH:MM" 格式
+    parsed_times = []
+    for time in daily_times:
+        if isinstance(time, str):
+            # 处理 "HH:MM" 格式
+            if ':' in time:
+                try:
+                    hour, minute = time.split(':')
+                    parsed_times.append({'hour': int(hour), 'minute': int(minute)})
+                except ValueError:
+                    raise ValueError(f"Invalid time format: {time}. Expected 'HH:MM' format.")
+            else:
+                # 处理纯数字字符串
+                try:
+                    parsed_times.append({'hour': int(time), 'minute': 0})
+                except ValueError:
+                    raise ValueError(f"Invalid time format: {time}. Expected integer or 'HH:MM' format.")
+        elif isinstance(time, (int, float)):
+            # 处理整数小时
+            parsed_times.append({'hour': int(time), 'minute': 0})
+        else:
+            raise ValueError(f"Invalid time type: {type(time)}. Expected int, float, or string.")
+    
+    if videos_per_day > len(parsed_times):
         raise ValueError("videos_per_day should not exceed the length of daily_times")
 
     # Generate timestamps
@@ -118,9 +141,17 @@ def generate_schedule_time_next_day(total_videos, videos_per_day = 1, daily_time
         daily_video_index = video % videos_per_day
 
         # Calculate the time for the current video
-        hour = daily_times[daily_video_index]
-        time_offset = timedelta(days=day, hours=hour - current_time.hour, minutes=-current_time.minute,
-                                seconds=-current_time.second, microseconds=-current_time.microsecond)
+        time_info = parsed_times[daily_video_index]
+        hour = time_info['hour']
+        minute = time_info['minute']
+        
+        time_offset = timedelta(
+            days=day, 
+            hours=hour - current_time.hour, 
+            minutes=minute - current_time.minute,
+            seconds=-current_time.second, 
+            microseconds=-current_time.microsecond
+        )
         timestamp = current_time + time_offset
 
         schedule.append(timestamp)

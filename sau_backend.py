@@ -20,8 +20,8 @@ app = Flask(__name__)
 #允许所有来源跨域访问
 CORS(app)
 
-# 限制上传文件大小为160MB
-app.config['MAX_CONTENT_LENGTH'] = 160 * 1024 * 1024
+# 限制上传文件大小为1GB
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024
 
 # 获取当前目录（假设 index.html 和 assets 在这里）
 current_dir = os.path.dirname(os.path.abspath(__file__))
