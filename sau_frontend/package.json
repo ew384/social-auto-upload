@@ -3,7 +3,6 @@
   "private": true,
   "version": "0.0.0",
   "author": "Edan.Lee",
-  "type": "module",
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {

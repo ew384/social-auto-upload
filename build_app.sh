@@ -250,15 +250,22 @@ update_electron_config() {
     cd ..
 }
 
-# 修复 main.js 中的路径问题
+# 修复 main.js 中的模块问题
 fix_main_js() {
-    echo "🔧 修复 main.js 路径问题..."
+    echo "🔧 修复 main.js 模块问题..."
+    
+    # 确保 electron 目录存在
+    mkdir -p sau_frontend/electron
     
     cat > sau_frontend/electron/main.js << 'EOF'
-const { app, BrowserWindow, Menu } = require('electron')
-const path = require('path')
-const { spawn } = require('child_process')
-const net = require('net')
+import { app, BrowserWindow, Menu } from 'electron'
+import { spawn } from 'child_process'
+import { createServer } from 'net'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 let mainWindow
 let pythonProcess
@@ -267,7 +274,7 @@ const isDev = process.env.NODE_ENV === 'development'
 // 检查端口是否被占用
 function checkPort(port) {
   return new Promise((resolve) => {
-    const server = net.createServer()
+    const server = createServer()
     server.listen(port, () => {
       server.once('close', () => resolve(true))
       server.close()
@@ -347,38 +354,39 @@ function startPythonBackend() {
   let pythonExecutable = path.join(backendPath, 'sau_backend')
   
   // 检查可执行文件是否存在
-  const fs = require('fs')
-  if (!fs.existsSync(pythonExecutable)) {
-    console.error('Python 后端可执行文件不存在:', pythonExecutable)
-    return
-  }
-
-  console.log('启动 Python 后端:', pythonExecutable)
-  console.log('工作目录:', backendPath)
-
-  pythonProcess = spawn(pythonExecutable, [], {
-    cwd: backendPath,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      PYTHONPATH: backendPath
+  import('fs').then(fs => {
+    if (!fs.existsSync(pythonExecutable)) {
+      console.error('Python 后端可执行文件不存在:', pythonExecutable)
+      return
     }
-  })
 
-  pythonProcess.stdout.on('data', (data) => {
-    console.log(`[Backend] ${data.toString().trim()}`)
-  })
+    console.log('启动 Python 后端:', pythonExecutable)
+    console.log('工作目录:', backendPath)
 
-  pythonProcess.stderr.on('data', (data) => {
-    console.error(`[Backend Error] ${data.toString().trim()}`)
-  })
+    pythonProcess = spawn(pythonExecutable, [], {
+      cwd: backendPath,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        PYTHONPATH: backendPath
+      }
+    })
 
-  pythonProcess.on('close', (code) => {
-    console.log(`Python 后端进程退出，代码: ${code}`)
-  })
+    pythonProcess.stdout.on('data', (data) => {
+      console.log(`[Backend] ${data.toString().trim()}`)
+    })
 
-  pythonProcess.on('error', (err) => {
-    console.error('Python 后端启动失败:', err)
+    pythonProcess.stderr.on('data', (data) => {
+      console.error(`[Backend Error] ${data.toString().trim()}`)
+    })
+
+    pythonProcess.on('close', (code) => {
+      console.log(`Python 后端进程退出，代码: ${code}`)
+    })
+
+    pythonProcess.on('error', (err) => {
+      console.error('Python 后端启动失败:', err)
+    })
   })
 }
 
@@ -487,7 +495,26 @@ process.on('SIGTERM', () => {
 })
 EOF
     
-    echo "✅ main.js 已修复"
+    echo "✅ main.js 已修复为 ES 模块格式"
+}
+
+# 安装跨平台构建依赖
+install_cross_platform_deps() {
+    echo "📦 安装跨平台构建依赖..."
+    cd sau_frontend
+    
+    # 安装缺少的依赖
+    if [ "$PKG_MANAGER" = "yarn" ]; then
+        # 安装 dmg-license 和其他跨平台构建依赖
+        yarn add -D dmg-license@1.0.11
+        yarn add -D electron-builder-notarize@1.5.0
+    else
+        npm install --save-dev dmg-license@1.0.11
+        npm install --save-dev electron-builder-notarize@1.5.0
+    fi
+    
+    cd ..
+    echo "✅ 跨平台构建依赖已安装"
 }
 
 # 构建 Electron 应用
@@ -495,18 +522,69 @@ build_electron() {
     echo "⚡ 构建 Electron 应用..."
     cd sau_frontend
     
+    # 安装跨平台构建依赖
+    install_cross_platform_deps
+    
     # 设置环境变量以支持跨平台构建
     export CSC_IDENTITY_AUTO_DISCOVERY=false
+    export ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES=true
     
-    # 构建应用
+    # 如果是在 Linux 上构建 macOS 应用，使用更简单的目标
+    echo "🔧 配置跨平台构建参数..."
+    
+    # 构建应用 - 使用更兼容的参数
     if [ "$PKG_MANAGER" = "yarn" ]; then
-        yarn build:electron
+        yarn electron-builder --mac --x64 --publish=never --config.mac.target.target=dir
     else
-        npm run build:electron
+        npx electron-builder --mac --x64 --publish=never --config.mac.target.target=dir
     fi
     
     cd ..
     echo "✅ Electron 应用构建完成"
+}
+
+# 创建 DMG 包（如果需要）
+create_dmg_manually() {
+    echo "📦 手动创建 DMG 包..."
+    
+    if [ -d "sau_frontend/dist-electron/mac" ]; then
+        cd sau_frontend/dist-electron
+        
+        # 查找 .app 文件
+        APP_FILE=$(find . -name "*.app" -type d | head -1)
+        
+        if [ -n "$APP_FILE" ]; then
+            APP_NAME=$(basename "$APP_FILE")
+            DMG_NAME="SAU-自媒体自动化运营系统.dmg"
+            
+            echo "🔨 创建 DMG: $DMG_NAME"
+            
+            # 创建临时目录
+            mkdir -p dmg-temp
+            cp -r "$APP_FILE" dmg-temp/
+            
+            # 如果系统有 hdiutil（不太可能在 Ubuntu 上），使用它
+            if command -v hdiutil &> /dev/null; then
+                hdiutil create -volname "SAU自媒体自动化运营系统" -srcfolder dmg-temp -ov -format UDZO "$DMG_NAME"
+                echo "✅ DMG 创建成功: $DMG_NAME"
+            else
+                # 在 Ubuntu 上，我们只是重命名目录
+                mv dmg-temp "SAU-自媒体自动化运营系统"
+                tar -czf "$DMG_NAME.tar.gz" "SAU-自媒体自动化运营系统"
+                echo "✅ 应用包已压缩为: $DMG_NAME.tar.gz"
+                echo "📝 在 macOS 上解压后可以直接使用"
+            fi
+            
+            # 清理临时文件
+            rm -rf dmg-temp "SAU-自媒体自动化运营系统"
+        else
+            echo "❌ 未找到 .app 文件"
+        fi
+        
+        cd ../..
+    else
+        echo "❌ 未找到 mac 构建目录"
+    fi
 }
 
 # 创建最终分发包
@@ -520,23 +598,51 @@ create_distribution() {
     if [ -d "sau_frontend/dist-electron" ]; then
         cp -r sau_frontend/dist-electron/* final-dist/
         echo "✅ 已复制 Electron 应用到 final-dist/"
+        
+        # 尝试创建 DMG
+        create_dmg_manually
+        
+        # 复制任何生成的安装包
+        if ls sau_frontend/dist-electron/*.dmg 1> /dev/null 2>&1; then
+            cp sau_frontend/dist-electron/*.dmg final-dist/
+        fi
+        
+        if ls sau_frontend/dist-electron/*.tar.gz 1> /dev/null 2>&1; then
+            cp sau_frontend/dist-electron/*.tar.gz final-dist/
+        fi
     fi
     
-    # 检查是否有 .dmg 文件
+    # 检查构建结果
     if ls final-dist/*.dmg 1> /dev/null 2>&1; then
         echo "🎉 构建成功！"
         echo "📁 分发文件位置: final-dist/"
         echo "💿 macOS 安装包: $(ls final-dist/*.dmg)"
+    elif ls final-dist/*.tar.gz 1> /dev/null 2>&1; then
+        echo "🎉 构建成功！"
+        echo "📁 分发文件位置: final-dist/"
+        echo "📦 macOS 应用包: $(ls final-dist/*.tar.gz)"
         echo ""
         echo "📋 使用说明:"
-        echo "  1. 将 .dmg 文件传输到 macOS 设备"
-        echo "  2. 双击 .dmg 文件"
-        echo "  3. 拖拽应用到 Applications 文件夹"
-        echo "  4. 首次运行可能需要在系统偏好设置中允许运行"
-        echo "  5. 应用会自动启动后端服务并打开浏览器界面"
+        echo "  1. 将 .tar.gz 文件传输到 macOS 设备"
+        echo "  2. 解压: tar -xzf *.tar.gz"
+        echo "  3. 将 .app 拖拽到 Applications 文件夹"
+        echo "  4. 首次运行需要安装 Playwright: playwright install chromium"
+    elif [ -d "final-dist/mac" ]; then
+        echo "🎉 构建成功！"
+        echo "📁 分发文件位置: final-dist/mac/"
+        echo "📱 macOS 应用: $(ls final-dist/mac/)"
+        echo ""
+        echo "📋 使用说明:"
+        echo "  1. 将整个 mac 文件夹传输到 macOS 设备"
+        echo "  2. 将 .app 拖拽到 Applications 文件夹"
+        echo "  3. 首次运行需要安装 Playwright: playwright install chromium"
     else
-        echo "⚠️  未找到 .dmg 文件，请检查构建日志"
+        echo "⚠️  构建完成，但未找到标准安装包格式"
+        echo "📁 请检查 final-dist/ 目录中的文件"
     fi
+    
+    echo ""
+    echo "🚀 现在可以在 macOS 设备上安装运行了！"
 }
 
 # 清理临时文件
