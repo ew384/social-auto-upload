@@ -8,182 +8,365 @@
           <p class="page-subtitle">管理所有平台的账号信息</p>
         </div>
         <div class="header-actions">
-          <el-button type="primary" @click="handleAddAccount" class="add-btn">
+          <el-button 
+            v-if="activeTab === 'accounts'"
+            type="primary" 
+            @click="handleAddAccount" 
+            class="add-btn"
+          >
             <el-icon><Plus /></el-icon>
             添加账号
           </el-button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 筛选工具栏 -->
-    <div class="filter-toolbar">
-      <div class="filter-left">
-        <div class="filter-group">
-          <el-select v-model="filterStatus" placeholder="账号状态" clearable class="filter-select">
-            <el-option label="全部状态" value="" />
-            <el-option label="正常" value="正常" />
-            <el-option label="异常" value="异常" />
-          </el-select>
-
-          <el-select v-model="filterPlatform" placeholder="选择平台" clearable class="filter-select">
-            <el-option label="全部平台" value="" />
-            <el-option label="抖音" value="抖音" />
-            <el-option label="快手" value="快手" />
-            <el-option label="视频号" value="视频号" />
-            <el-option label="小红书" value="小红书" />
-          </el-select>
-        </div>
-
-        <div class="search-box">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="搜索账号名称..."
-            clearable
-            @input="handleSearch"
-            class="search-input"
+          <el-button 
+            v-if="activeTab === 'groups'"
+            type="primary" 
+            @click="handleAddGroup" 
+            class="add-btn"
           >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-        </div>
-      </div>
-
-      <div class="filter-right">
-        <el-button @click="fetchAccounts" :loading="appStore.isAccountRefreshing" class="refresh-btn">
-          <el-icon :class="{ 'rotating': appStore.isAccountRefreshing }"><Refresh /></el-icon>
-        </el-button>
-        <el-dropdown>
-          <el-button class="more-btn">
-            <el-icon><More /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item>批量操作</el-dropdown-item>
-              <el-dropdown-item>导出数据</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
-    </div>
-
-    <!-- 统计卡片 -->
-    <div class="stats-section">
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon total">
-            <el-icon><User /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-number">{{ totalCount }}</div>
-            <div class="stat-label">总账号数</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon normal">
-            <el-icon><CircleCheckFilled /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-number">{{ normalCount }}</div>
-            <div class="stat-label">正常账号</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon abnormal">
-            <el-icon><WarningFilled /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-number">{{ abnormalCount }}</div>
-            <div class="stat-label">异常账号</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon platforms">
-            <el-icon><Grid /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-number">{{ platformCount }}</div>
-            <div class="stat-label">覆盖平台</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 账号列表 -->
-    <div class="accounts-section">
-      <div v-if="filteredAccounts.length > 0" class="accounts-grid">
-        <div 
-          v-for="account in filteredAccounts" 
-          :key="account.id"
-          class="account-card"
-        >
-          <!-- 账号信息 - 新的左右布局 -->
-          <div class="account-info">
-            <!-- 左侧头像区域 -->
-            <div class="avatar-container">
-              <div class="account-avatar">
-                <el-avatar :size="56" :src="account.avatar || ''" />
-              </div>
-              <!-- 平台logo -->
-              <div class="platform-logo">
-                <img :src="getPlatformLogo(account.platform)" :alt="account.platform" />
-              </div>
-              <!-- 状态指示点 -->
-              <div :class="['status-dot', account.status === '正常' ? 'online' : 'offline']"></div>
-            </div>
-
-            <!-- 右侧账号详情 -->
-            <div class="account-details">
-              <h3 class="account-name">{{ account.name }}</h3>
-              <div class="account-meta">
-                <span class="platform-text">{{ account.platform }}</span>
-                <el-tag 
-                  :type="account.status === '正常' ? 'success' : 'danger'" 
-                  size="small"
-                  effect="light"
-                >
-                  {{ account.status }}
-                </el-tag>
-              </div>
-            </div>
-          </div>
-
-          <!-- 操作按钮 - 悬停显示 -->
-          <div class="account-actions">
-            <el-button size="small" @click="handleEdit(account)" class="action-btn" title="编辑">
-              <el-icon><Edit /></el-icon>
-            </el-button>
-            <el-button 
-              size="small" 
-              type="danger" 
-              @click="handleDelete(account)"
-              class="action-btn danger"
-              title="删除"
-            >
-              <el-icon><Delete /></el-icon>
-            </el-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 空状态 -->
-      <div v-else class="empty-state">
-        <div class="empty-content">
-          <div class="empty-icon">
-            <el-icon><UserFilled /></el-icon>
-          </div>
-          <h3 class="empty-title">暂无账号数据</h3>
-          <p class="empty-description">
-            {{ searchKeyword || filterStatus || filterPlatform ? '没有找到符合条件的账号' : '还没有添加任何账号，点击上方按钮开始添加' }}
-          </p>
-          <el-button v-if="!searchKeyword && !filterStatus && !filterPlatform" type="primary" @click="handleAddAccount">
             <el-icon><Plus /></el-icon>
-            添加第一个账号
+            创建分组
           </el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 标签页切换 -->
+    <div class="tabs-container">
+      <!-- 自定义标签页按钮 -->
+      <div class="simple-tabs">
+        <div class="tabs-header">
+          <div 
+            :class="['tab-item', { active: activeTab === 'accounts' }]"
+            @click="activeTab = 'accounts'"
+          >
+            账号管理
+          </div>
+          <div 
+            :class="['tab-item', { active: activeTab === 'groups' }]"
+            @click="activeTab = 'groups'"
+          >
+            分组管理
+          </div>
+        </div>
+      </div>
+
+      <!-- 内容区域 -->
+      <div class="tab-content">
+        <!-- 账号管理内容 -->
+        <div v-show="activeTab === 'accounts'" class="accounts-content">
+          <!-- 筛选工具栏 -->
+          <div class="filter-toolbar">
+            <div class="filter-left">
+              <div class="filter-group">
+                <el-select v-model="filterStatus" placeholder="账号状态" clearable class="filter-select">
+                  <el-option label="全部状态" value="" />
+                  <el-option label="正常" value="正常" />
+                  <el-option label="异常" value="异常" />
+                </el-select>
+
+                <el-select v-model="filterPlatform" placeholder="选择平台" clearable class="filter-select">
+                  <el-option label="全部平台" value="" />
+                  <el-option label="抖音" value="抖音" />
+                  <el-option label="快手" value="快手" />
+                  <el-option label="视频号" value="视频号" />
+                  <el-option label="小红书" value="小红书" />
+                </el-select>
+
+                <!-- 分组筛选 -->
+                <el-select v-model="filterGroup" placeholder="选择分组" clearable class="filter-select">
+                  <el-option label="全部分组" value="" />
+                  <el-option label="未分组" value="ungrouped" />
+                  <el-option 
+                    v-for="group in accountStore.groups"
+                    :key="group.id"
+                    :label="group.name"
+                    :value="group.id"
+                  />
+                </el-select>
+              </div>
+
+              <div class="search-box">
+                <el-input
+                  v-model="searchKeyword"
+                  placeholder="搜索账号名称..."
+                  clearable
+                  @input="handleSearch"
+                  class="search-input"
+                >
+                  <template #prefix>
+                    <el-icon><Search /></el-icon>
+                  </template>
+                </el-input>
+              </div>
+            </div>
+
+            <div class="filter-right">
+              <el-button @click="fetchAccounts" :loading="appStore.isAccountRefreshing" class="refresh-btn">
+                <el-icon :class="{ 'rotating': appStore.isAccountRefreshing }"><Refresh /></el-icon>
+              </el-button>
+              <el-dropdown>
+                <el-button class="more-btn">
+                  <el-icon><More /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item>批量操作</el-dropdown-item>
+                    <el-dropdown-item>导出数据</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </div>
+
+          <!-- 统计卡片 -->
+          <div class="stats-section">
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-icon total">
+                  <el-icon><User /></el-icon>
+                </div>
+                <div class="stat-content">
+                  <div class="stat-number">{{ totalCount }}</div>
+                  <div class="stat-label">总账号数</div>
+                </div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-icon normal">
+                  <el-icon><CircleCheckFilled /></el-icon>
+                </div>
+                <div class="stat-content">
+                  <div class="stat-number">{{ normalCount }}</div>
+                  <div class="stat-label">正常账号</div>
+                </div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-icon abnormal">
+                  <el-icon><WarningFilled /></el-icon>
+                </div>
+                <div class="stat-content">
+                  <div class="stat-number">{{ abnormalCount }}</div>
+                  <div class="stat-label">异常账号</div>
+                </div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-icon platforms">
+                  <el-icon><Grid /></el-icon>
+                </div>
+                <div class="stat-content">
+                  <div class="stat-number">{{ platformCount }}</div>
+                  <div class="stat-label">覆盖平台</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 账号列表 -->
+          <div class="accounts-section">
+            <div v-if="filteredAccounts.length > 0" class="accounts-grid">
+              <div 
+                v-for="account in filteredAccounts" 
+                :key="account.id"
+                class="account-card"
+              >
+                <!-- 账号信息 -->
+                <div class="account-info">
+                  <div class="avatar-container">
+                    <div class="account-avatar">
+                      <el-avatar :size="56" :src="account.avatar || ''" />
+                    </div>
+                    <div class="platform-logo">
+                      <img :src="getPlatformLogo(account.platform)" :alt="account.platform" />
+                    </div>
+                    <div :class="['status-dot', account.status === '正常' ? 'online' : 'offline']"></div>
+                  </div>
+
+                  <div class="account-details">
+                    <h3 class="account-name">{{ account.name }}</h3>
+                    <div class="account-meta">
+                      <span class="platform-text">{{ account.platform }}</span>
+                      <!-- 分组信息 -->
+                      <el-tag 
+                        v-if="account.group_name"
+                        :color="account.group_color"
+                        size="small"
+                        effect="light"
+                        class="group-tag"
+                      >
+                        {{ account.group_name }}
+                      </el-tag>
+                      <el-tag 
+                        :type="account.status === '正常' ? 'success' : 'danger'" 
+                        size="small"
+                        effect="light"
+                      >
+                        {{ account.status }}
+                      </el-tag>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="account-actions">
+                  <el-button size="small" @click="handleEdit(account)" class="action-btn" title="编辑">
+                    <el-icon><Edit /></el-icon>
+                  </el-button>
+                  <el-button 
+                    size="small" 
+                    type="danger" 
+                    @click="handleDelete(account)"
+                    class="action-btn danger"
+                    title="删除"
+                  >
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 空状态 -->
+            <div v-else class="empty-state">
+              <div class="empty-content">
+                <div class="empty-icon">
+                  <el-icon><UserFilled /></el-icon>
+                </div>
+                <h3 class="empty-title">暂无账号数据</h3>
+                <p class="empty-description">
+                  {{ searchKeyword || filterStatus || filterPlatform ? '没有找到符合条件的账号' : '还没有添加任何账号，点击上方按钮开始添加' }}
+                </p>
+                <el-button v-if="!searchKeyword && !filterStatus && !filterPlatform" type="primary" @click="handleAddAccount">
+                  <el-icon><Plus /></el-icon>
+                  添加第一个账号
+                </el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分组管理内容 -->
+        <div v-show="activeTab === 'groups'" class="groups-content">
+          <!-- 分组统计 -->
+          <div class="groups-stats">
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-icon total">
+                  <el-icon><Collection /></el-icon>
+                </div>
+                <div class="stat-content">
+                  <div class="stat-number">{{ accountStore.groups.length }}</div>
+                  <div class="stat-label">总分组数</div>
+                </div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-icon normal">
+                  <el-icon><User /></el-icon>
+                </div>
+                <div class="stat-content">
+                  <div class="stat-number">{{ ungroupedAccounts.length }}</div>
+                  <div class="stat-label">未分组账号</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 分组列表 -->
+          <div class="groups-list">
+            <!-- 未分组区域 -->
+            <div class="group-card ungrouped">
+              <div class="group-header">
+                <div class="group-info">
+                  <div class="group-icon">
+                    <el-icon><User /></el-icon>
+                  </div>
+                  <div class="group-details">
+                    <h3 class="group-name">未分组账号</h3>
+                    <p class="group-description">{{ ungroupedAccounts.length }} 个账号</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="group-accounts" v-if="ungroupedAccounts.length > 0">
+                <div 
+                  v-for="account in ungroupedAccounts"
+                  :key="account.id"
+                  class="group-account-item"
+                  draggable="true"
+                  @dragstart="handleDragStart(account, $event)"
+                  @dragend="handleDragEnd"
+                >
+                  <el-avatar :size="32" :src="account.avatar" />
+                  <div class="account-info">
+                    <span class="account-name">{{ account.name }}</span>
+                    <span class="account-platform">{{ account.platform }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 分组区域 -->
+            <div 
+              v-for="group in accountStore.groups"
+              :key="group.id"
+              class="group-card"
+              @dragover="handleDragOver"
+              @dragleave="handleDragLeave"
+              @drop="handleDrop(group.id, $event)"
+            >
+              <div class="group-header">
+                <div class="group-info">
+                  <div class="group-icon" :style="{ backgroundColor: group.color }">
+                    <el-icon><component :is="getGroupIcon(group.icon)" /></el-icon>
+                  </div>
+                  <div class="group-details">
+                    <h3 class="group-name">{{ group.name }}</h3>
+                    <p class="group-description">{{ group.description || `${getAccountsByGroup(group.id).length} 个账号` }}</p>
+                  </div>
+                </div>
+                
+                <div class="group-actions">
+                  <el-button size="small" text @click="handleEditGroup(group)">
+                    <el-icon><Edit /></el-icon>
+                  </el-button>
+                  <el-button size="small" text type="danger" @click="handleDeleteGroup(group)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+              
+              <div class="group-accounts" v-if="getAccountsByGroup(group.id).length > 0">
+                <div 
+                  v-for="account in getAccountsByGroup(group.id)"
+                  :key="account.id"
+                  class="group-account-item"
+                  draggable="true"
+                  @dragstart="handleDragStart(account, $event)"
+                  @dragend="handleDragEnd"
+                >
+                  <el-avatar :size="32" :src="account.avatar" />
+                  <div class="account-info">
+                    <span class="account-name">{{ account.name }}</span>
+                    <span class="account-platform">{{ account.platform }}</span>
+                  </div>
+                  <el-button 
+                    size="small" 
+                    text 
+                    @click="moveAccountToGroup(account.id, null)"
+                    title="移出分组"
+                    class="remove-btn"
+                  >
+                    <el-icon><Close /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+              
+              <div v-else class="group-empty">
+                <span>拖拽账号到此分组</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -271,6 +454,58 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 分组管理对话框 -->
+    <el-dialog
+      v-model="groupDialogVisible"
+      :title="groupDialogType === 'add' ? '创建分组' : '编辑分组'"
+      width="480px"
+      class="group-dialog"
+    >
+      <el-form :model="groupForm" label-width="80px" :rules="groupRules" ref="groupFormRef">
+        <el-form-item label="分组名称" prop="name">
+          <el-input v-model="groupForm.name" placeholder="请输入分组名称" />
+        </el-form-item>
+        
+        <el-form-item label="描述">
+          <el-input 
+            v-model="groupForm.description" 
+            type="textarea" 
+            :rows="2"
+            placeholder="请输入分组描述（可选）" 
+          />
+        </el-form-item>
+        
+        <el-form-item label="颜色">
+          <el-color-picker v-model="groupForm.color" />
+        </el-form-item>
+        
+        <el-form-item label="图标">
+          <el-select v-model="groupForm.icon" placeholder="选择图标">
+            <el-option 
+              v-for="icon in groupIcons"
+              :key="icon"
+              :label="icon"
+              :value="icon"
+            >
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <el-icon><component :is="getGroupIcon(icon)" /></el-icon>
+                <span>{{ icon }}</span>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="groupDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitGroupForm">
+            {{ groupDialogType === 'add' ? '创建' : '更新' }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>    
   </div>
 </template>
 
@@ -295,6 +530,7 @@ import {
   VideoPlay,
   Message,
   Document,
+  Collection,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { accountApi } from "@/api/account";
@@ -341,6 +577,12 @@ const rules = {
 };
 
 // 计算属性
+const activeTab = ref("accounts");
+
+// 新增：分组筛选
+const filterGroup = ref("");
+
+// 修改筛选逻辑
 const filteredAccounts = computed(() => {
   let accounts = accountStore.accounts;
 
@@ -350,6 +592,15 @@ const filteredAccounts = computed(() => {
 
   if (filterPlatform.value) {
     accounts = accounts.filter((acc) => acc.platform === filterPlatform.value);
+  }
+
+  // 新增：分组筛选
+  if (filterGroup.value) {
+    if (filterGroup.value === "ungrouped") {
+      accounts = accounts.filter((acc) => !acc.group_id);
+    } else {
+      accounts = accounts.filter((acc) => acc.group_id === filterGroup.value);
+    }
   }
 
   if (searchKeyword.value) {
@@ -379,9 +630,28 @@ const fetchAccounts = async (forceCheck = false) => {
   appStore.setAccountRefreshing(true);
 
   try {
-    const res = await accountApi.getValidAccounts(forceCheck);
+    // 先尝试使用新API，如果失败则回退到旧API
+    let res;
+    try {
+      res = await accountApi.getAccountsWithGroups(forceCheck);
+    } catch (error) {
+      console.warn("新API不可用，回退到旧API:", error);
+      res = await accountApi.getValidAccounts(forceCheck);
+    }
+
     if (res.code === 200 && res.data) {
       accountStore.setAccounts(res.data);
+
+      // 同时获取分组信息
+      try {
+        const groupsRes = await accountApi.getGroups();
+        if (groupsRes.code === 200 && groupsRes.data) {
+          accountStore.setGroups(groupsRes.data);
+        }
+      } catch (error) {
+        console.warn("获取分组信息失败:", error);
+      }
+
       if (forceCheck) {
         ElMessage.success("账号数据刷新成功");
       } else {
@@ -589,7 +859,234 @@ const submitAccountForm = () => {
     }
   });
 };
+// 新增：分组管理相关方法和数据
+const groupDialogVisible = ref(false);
+const groupDialogType = ref("add");
+const groupFormRef = ref(null);
+const draggedAccount = ref(null);
 
+const groupForm = reactive({
+  id: null,
+  name: "",
+  description: "",
+  color: "#5B73DE",
+  icon: "Users",
+});
+
+const groupRules = {
+  name: [{ required: true, message: "请输入分组名称", trigger: "blur" }],
+};
+
+// 可选的图标列表
+const groupIcons = [
+  "Users",
+  "User",
+  "Briefcase",
+  "Star",
+  "Heart",
+  "Flag",
+  "Trophy",
+  "Gift",
+  "Crown",
+  "Diamond",
+  "Fire",
+  "Lightning",
+];
+
+// 计算属性：未分组的账号
+const ungroupedAccounts = computed(() => {
+  return accountStore.accounts.filter((acc) => !acc.group_id);
+});
+
+// 根据分组ID获取账号
+const getAccountsByGroup = (groupId) => {
+  return accountStore.accounts.filter((acc) => acc.group_id === groupId);
+};
+
+// 获取分组图标组件
+const getGroupIcon = (iconName) => {
+  // Element Plus 图标映射
+  const iconMap = {
+    Users: "User",
+    User: "User",
+    Briefcase: "Briefcase",
+    Star: "Star",
+    Heart: "Heart",
+    Flag: "Flag",
+    Trophy: "Trophy",
+    Gift: "Gift",
+    Crown: "Crown",
+    Diamond: "Diamond",
+    Fire: "Fire",
+    Lightning: "Lightning",
+  };
+  return iconMap[iconName] || "User";
+};
+
+// 拖拽开始
+const handleDragStart = (account, event) => {
+  draggedAccount.value = account;
+  event.dataTransfer.effectAllowed = "move";
+
+  // 添加拖拽样式
+  event.target.style.opacity = "0.5";
+};
+
+const handleDragOver = (event) => {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+
+  // 添加悬停样式
+  const groupCard = event.currentTarget;
+  groupCard.classList.add("drag-over");
+};
+
+const handleDragLeave = (event) => {
+  // 移除悬停样式
+  const groupCard = event.currentTarget;
+  groupCard.classList.remove("drag-over");
+};
+
+const handleDrop = async (groupId, event) => {
+  event.preventDefault();
+
+  // 移除悬停样式
+  const groupCard = event.currentTarget;
+  groupCard.classList.remove("drag-over");
+
+  if (!draggedAccount.value) return;
+
+  try {
+    const res = await accountApi.updateAccountGroup({
+      account_id: draggedAccount.value.id,
+      group_id: groupId,
+    });
+
+    if (res.code === 200) {
+      const group = accountStore.getGroupById(groupId);
+      accountStore.updateAccountGroup(draggedAccount.value.id, groupId, group);
+      ElMessage.success("账号分组更新成功");
+    } else {
+      ElMessage.error(res.msg || "分组更新失败");
+    }
+  } catch (error) {
+    console.error("更新账号分组失败:", error);
+    ElMessage.error("分组更新失败");
+  } finally {
+    draggedAccount.value = null;
+  }
+};
+
+const handleDragEnd = (event) => {
+  // 恢复透明度
+  event.target.style.opacity = "1";
+  draggedAccount.value = null;
+};
+// 移动账号到指定分组
+const moveAccountToGroup = async (accountId, groupId) => {
+  try {
+    const res = await accountApi.updateAccountGroup({
+      account_id: accountId,
+      group_id: groupId,
+    });
+
+    if (res.code === 200) {
+      const group = groupId ? accountStore.getGroupById(groupId) : null;
+      accountStore.updateAccountGroup(accountId, groupId, group);
+      ElMessage.success(groupId ? "账号已移入分组" : "账号已移出分组");
+    } else {
+      ElMessage.error(res.msg || "操作失败");
+    }
+  } catch (error) {
+    console.error("移动账号失败:", error);
+    ElMessage.error("操作失败");
+  }
+};
+
+// 添加分组
+const handleAddGroup = () => {
+  groupDialogType.value = "add";
+  Object.assign(groupForm, {
+    id: null,
+    name: "",
+    description: "",
+    color: "#5B73DE",
+    icon: "Users",
+  });
+  groupDialogVisible.value = true;
+};
+
+// 编辑分组
+const handleEditGroup = (group) => {
+  groupDialogType.value = "edit";
+  Object.assign(groupForm, { ...group });
+  groupDialogVisible.value = true;
+};
+
+// 删除分组
+const handleDeleteGroup = (group) => {
+  ElMessageBox.confirm(
+    `确定要删除分组 "${group.name}" 吗？分组内的账号将变为未分组状态。`,
+    "删除确认",
+    {
+      confirmButtonText: "确定删除",
+      cancelButtonText: "取消",
+      type: "warning",
+    }
+  )
+    .then(async () => {
+      try {
+        const res = await accountApi.deleteGroup(group.id);
+        if (res.code === 200) {
+          accountStore.deleteGroup(group.id);
+          ElMessage.success("分组删除成功");
+        } else {
+          ElMessage.error(res.msg || "删除失败");
+        }
+      } catch (error) {
+        console.error("删除分组失败:", error);
+        ElMessage.error("删除失败");
+      }
+    })
+    .catch(() => {});
+};
+
+// 提交分组表单
+const submitGroupForm = () => {
+  groupFormRef.value.validate(async (valid) => {
+    if (valid) {
+      try {
+        let res;
+        if (groupDialogType.value === "add") {
+          res = await accountApi.createGroup(groupForm);
+          if (res.code === 200) {
+            ElMessage.success("分组创建成功");
+            // 重新获取分组列表
+            const groupsRes = await accountApi.getGroups();
+            if (groupsRes.code === 200) {
+              accountStore.setGroups(groupsRes.data);
+            }
+          }
+        } else {
+          res = await accountApi.updateGroup(groupForm);
+          if (res.code === 200) {
+            accountStore.updateGroup(groupForm.id, groupForm);
+            ElMessage.success("分组更新成功");
+          }
+        }
+
+        if (res.code === 200) {
+          groupDialogVisible.value = false;
+        } else {
+          ElMessage.error(res.msg || "操作失败");
+        }
+      } catch (error) {
+        console.error("分组操作失败:", error);
+        ElMessage.error("操作失败");
+      }
+    }
+  });
+};
 // 生命周期
 onMounted(() => {
   if (appStore.isFirstTimeAccountManagement) {
@@ -929,6 +1426,17 @@ $space-2xl: 48px;
             border-radius: $radius-sm;
             font-weight: 500;
           }
+
+          // 新增：分组标签样式
+          .group-tag {
+            font-size: 12px;
+            border: none;
+
+            :deep(.el-tag__content) {
+              color: white;
+              font-weight: 500;
+            }
+          }
         }
       }
     }
@@ -1188,6 +1696,303 @@ $space-2xl: 48px;
 
   .accounts-grid {
     grid-template-columns: 1fr !important;
+  }
+}
+// 分组管理专用样式
+.groups-content {
+  .groups-stats {
+    margin-bottom: $space-lg;
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: $space-md;
+
+      .stat-card {
+        background: $bg-white;
+        border-radius: $radius-lg;
+        padding: $space-lg;
+        display: flex;
+        align-items: center;
+        gap: $space-md;
+        box-shadow: $shadow-sm;
+        transition: all 0.3s ease;
+
+        &:hover {
+          transform: translateY(-2px);
+          box-shadow: $shadow-md;
+        }
+
+        .stat-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: $radius-lg;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+
+          .el-icon {
+            font-size: 24px;
+            color: white;
+          }
+
+          &.total {
+            background: linear-gradient(135deg, $primary 0%, #8b9ee8 100%);
+          }
+
+          &.normal {
+            background: linear-gradient(135deg, $success 0%, #34d399 100%);
+          }
+
+          &.abnormal {
+            background: linear-gradient(135deg, $danger 0%, #f87171 100%);
+          }
+
+          &.platforms {
+            background: linear-gradient(135deg, $info 0%, #9ca3af 100%);
+          }
+        }
+
+        .stat-content {
+          .stat-number {
+            font-size: 24px;
+            font-weight: 700;
+            color: $text-primary;
+            line-height: 1.2;
+          }
+
+          .stat-label {
+            font-size: 14px;
+            color: $text-secondary;
+            margin-top: $space-xs;
+          }
+        }
+      }
+    }
+  }
+
+  .groups-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: $space-lg;
+
+    .group-card {
+      background: $bg-white;
+      border-radius: $radius-xl;
+      padding: $space-lg;
+      box-shadow: $shadow-sm;
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: $shadow-md;
+      }
+
+      &.ungrouped {
+        border: 2px dashed $border-light;
+        background: $bg-gray;
+
+        .group-icon {
+          background: $text-muted !important;
+        }
+      }
+
+      // 拖拽悬停效果
+      &.drag-over {
+        border-color: $primary;
+        background-color: rgba(91, 115, 222, 0.05);
+      }
+
+      .group-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: $space-md;
+
+        .group-info {
+          display: flex;
+          align-items: flex-start;
+          gap: $space-md;
+          flex: 1;
+
+          .group-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: $radius-lg;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+
+            .el-icon {
+              font-size: 24px;
+              color: white;
+            }
+          }
+
+          .group-details {
+            flex: 1;
+            min-width: 0;
+
+            .group-name {
+              font-size: 18px;
+              font-weight: 600;
+              color: $text-primary;
+              margin: 0 0 $space-xs 0;
+              line-height: 1.2;
+            }
+
+            .group-description {
+              font-size: 14px;
+              color: $text-secondary;
+              margin: 0;
+              line-height: 1.4;
+            }
+          }
+        }
+
+        .group-actions {
+          display: flex;
+          gap: $space-xs;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+
+          .el-button {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+          }
+        }
+      }
+
+      &:hover .group-actions {
+        opacity: 1;
+      }
+
+      .group-accounts {
+        .group-account-item {
+          display: flex;
+          align-items: center;
+          gap: $space-sm;
+          padding: $space-sm;
+          border-radius: $radius-md;
+          transition: all 0.3s ease;
+          cursor: grab;
+          margin-bottom: $space-xs;
+
+          &:hover {
+            background-color: $bg-light;
+          }
+
+          &:active {
+            cursor: grabbing;
+          }
+
+          &:last-child {
+            margin-bottom: 0;
+          }
+
+          .account-info {
+            flex: 1;
+            min-width: 0;
+
+            .account-name {
+              font-size: 14px;
+              font-weight: 500;
+              color: $text-primary;
+              margin-bottom: 2px;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+
+            .account-platform {
+              font-size: 12px;
+              color: $text-secondary;
+            }
+          }
+
+          .remove-btn {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            width: 24px;
+            height: 24px;
+            min-height: 24px;
+            padding: 0;
+            border-radius: 50%;
+
+            .el-icon {
+              font-size: 12px;
+            }
+          }
+
+          &:hover .remove-btn {
+            opacity: 1;
+          }
+        }
+      }
+
+      .group-empty {
+        padding: $space-lg;
+        text-align: center;
+        color: $text-muted;
+        font-size: 14px;
+        border: 2px dashed $border-light;
+        border-radius: $radius-md;
+        background-color: $bg-light;
+      }
+    }
+  }
+}
+
+// 标签页样式优化
+// 更接近竞品的标签页样式
+.tabs-container {
+  .simple-tabs {
+    margin-bottom: $space-lg;
+
+    .tabs-header {
+      display: flex;
+      align-items: center;
+      background: transparent;
+      padding: 0;
+
+      .tab-item {
+        padding: 12px 20px;
+        margin-right: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #9ca3af;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        background: transparent;
+        border: none;
+        border-radius: 6px 6px 0 0;
+
+        &:hover {
+          color: $text-primary;
+          background-color: rgba(91, 115, 222, 0.05);
+        }
+
+        &.active {
+          color: $primary;
+          background-color: $bg-white;
+          border-bottom: 2px solid $primary;
+          box-shadow: 0 -1px 0 0 $border-light, 1px 0 0 0 $border-light,
+            -1px 0 0 0 $border-light;
+        }
+      }
+    }
+  }
+
+  .tab-content {
+    background: $bg-white;
+    border-radius: 0 8px 8px 8px;
+    padding: $space-lg;
+    box-shadow: $shadow-sm;
   }
 }
 </style>

@@ -5,10 +5,6 @@ import os
 # 数据库文件路径（如果不存在会自动创建）
 db_file = './database.db'
 
-# 如果数据库已存在，则删除旧的表（可选）
-# if os.path.exists(db_file):
-#     os.remove(db_file)
-
 # 连接到SQLite数据库（如果文件不存在则会自动创建）
 conn = sqlite3.connect(db_file)
 cursor = conn.cursor()
@@ -21,8 +17,10 @@ CREATE TABLE IF NOT EXISTS user_info (
     filePath TEXT NOT NULL,  -- 存储文件路径
     userName TEXT NOT NULL,
     status INTEGER DEFAULT 0,
-    last_check_time DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 新增：最后检查时间
-    check_interval INTEGER DEFAULT 3600                  -- 新增：检查间隔（秒），默认1小时
+    group_id INTEGER DEFAULT NULL,                       -- 分组ID，NULL表示未分组
+    last_check_time DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 最后检查时间
+    check_interval INTEGER DEFAULT 3600,                 -- 检查间隔（秒），默认1小时
+    FOREIGN KEY (group_id) REFERENCES account_groups(id) ON DELETE SET NULL
 )
 ''')
 
@@ -36,6 +34,17 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS file_records (
 )
 ''')
 
+# 新增：创建分组表
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS account_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT DEFAULT '',
+    color VARCHAR(20) DEFAULT '#5B73DE',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+''')
 
 # 提交更改
 conn.commit()
