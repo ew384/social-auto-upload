@@ -331,7 +331,7 @@ class TencentVideo(object):
 
 
     async def upload(self, playwright: Playwright) -> None:
-        """修复的主上传方法"""
+        """修复的主上传方法 - 完整版"""
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"文件不存在: {self.file_path}")
         
@@ -361,25 +361,55 @@ class TencentVideo(object):
             await page.wait_for_selector('.wujie_iframe', timeout=30000)
             await asyncio.sleep(3)
             
-            # 使用修复的上传方法
+            # 步骤1: 上传文件
             await self.upload_file_to_shadow_dom_fixed(page)
             
-            # 验证上传开始
+            # 步骤2: 验证上传开始
             upload_started = await self.verify_upload_started(page)
             if not upload_started:
                 raise Exception("文件上传验证失败")
             
-            # 等待处理完成并继续流程
+            # 步骤3: 等待视频处理完成
             tencent_logger.info("等待视频处理完成...")
             await asyncio.sleep(10)  # 给视频处理一些时间
             
-            # 继续其他步骤
+            # 步骤4: 添加标题和标签
             await self.add_title_tags(page)
+            
+            # 步骤5: 添加到合集（如果需要）
+            await self.add_collection(page)
+            
+            # 步骤6: 等待上传完全完成
             await self.detect_upload_status_no_timeout(page)
+            
+            # 步骤7: 处理定时发布（如果需要）
+            if self.publish_date and self.publish_date > datetime.now():
+                await self.set_schedule_time_tencent(page, self.publish_date)
+            
+            # 步骤8: 添加到合集（如果需要）
+            await self.add_collection(page)
+            
+            # 步骤9: 处理原创声明（在发布前）
+            await self.handle_original_declaration_in_shadow(page)
+            
+            # 步骤10: 发布视频
             await self.click_publish(page)
             
             await context.storage_state(path=f"{self.account_file}")
             tencent_logger.success('上传完成!')
+            
+        except Exception as e:
+            tencent_logger.error(f"上传过程中出现错误: {e}")
+            
+            # 保存错误截图
+            try:
+                error_screenshot = f"upload_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                await page.screenshot(path=error_screenshot, full_page=True)
+                tencent_logger.info(f"已保存错误截图: {error_screenshot}")
+            except:
+                pass
+                
+            raise
             
         finally:
             try:
@@ -387,7 +417,7 @@ class TencentVideo(object):
                 await browser.close()
             except:
                 pass
-    
+
     async def detect_upload_status_no_timeout(self, page):
         """无超时版本 - 持续等待直到上传完成"""
         start_time = asyncio.get_event_loop().time()
@@ -436,16 +466,150 @@ class TencentVideo(object):
             tencent_logger.warning(f"添加标题失败: {e}")
 
 
+    async def handle_original_declaration_in_shadow(self, page):
+        """处理Shadow DOM中的原创声明流程"""
+        try:
+            tencent_logger.info("开始处理Shadow DOM中的原创声明...")
+            
+            # 检查wujie-app元素
+            wujie_app = page.locator('wujie-app')
+            if not await wujie_app.count():
+                tencent_logger.info("未找到wujie-app，跳过原创声明处理")
+                return
+            
+            # 组合脚本一次性执行三步流程
+            combined_script = '''
+            async () => {
+                console.log('开始处理原创声明...');
+                
+                const wujieApp = document.querySelector('wujie-app');
+                if (!wujieApp || !wujieApp.shadowRoot) {
+                    return { success: false, step: 0, message: '未找到shadowRoot' };
+                }
+                
+                const shadowDoc = wujieApp.shadowRoot;
+                
+                // 步骤1：点击原创声明checkbox
+                const checkboxWrappers = shadowDoc.querySelectorAll('label.ant-checkbox-wrapper');
+                let step1Success = false;
+                
+                for (let wrapper of checkboxWrappers) {
+                    if (wrapper.textContent.includes('声明后，作品将展示原创标记') ||
+                        wrapper.textContent.includes('有机会获得广告收入')) {
+                        const isChecked = wrapper.querySelector('.ant-checkbox-checked');
+                        if (!isChecked) {
+                            wrapper.click();
+                            console.log('已点击原创声明checkbox');
+                        } else {
+                            console.log('原创声明已勾选');
+                        }
+                        step1Success = true;
+                        break;
+                    }
+                }
+                
+                if (!step1Success) {
+                    return { success: false, step: 1, message: '未找到原创声明checkbox' };
+                }
+                
+                // 等待对话框出现
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // 步骤2：同意条款
+                const protoWrapper = shadowDoc.querySelector('.original-proto-wrapper');
+                if (protoWrapper) {
+                    const checkbox = protoWrapper.querySelector('label.ant-checkbox-wrapper');
+                    if (checkbox) {
+                        const isChecked = checkbox.querySelector('.ant-checkbox-checked');
+                        if (!isChecked) {
+                            checkbox.click();
+                            console.log('已同意条款');
+                        } else {
+                            console.log('条款已勾选');
+                        }
+                    }
+                } else {
+                    return { success: false, step: 2, message: '未找到协议包装器' };
+                }
+                
+                // 等待按钮状态更新
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // 步骤3：点击声明原创按钮
+                const buttons = shadowDoc.querySelectorAll('button');
+                for (let i = 0; i < buttons.length; i++) {
+                    const btn = buttons[i];
+                    const text = btn.textContent.trim();
+                    const isDisabled = btn.classList.contains('weui-desktop-btn_disabled');
+                    const isVisible = btn.offsetParent !== null;
+                    
+                    if (text === '声明原创' && !isDisabled && isVisible) {
+                        btn.click();
+                        console.log(`已点击声明原创按钮(索引${i})`);
+                        return { success: true, step: 3, message: '完整流程成功' };
+                    }
+                }
+                
+                return { success: false, step: 3, message: '未找到可用的声明原创按钮' };
+            }
+            '''
+            
+            result = await page.evaluate(combined_script)
+            tencent_logger.info(f"原创声明处理结果: {result}")
+            
+            if result['success']:
+                tencent_logger.success("✅ Shadow DOM原创声明流程完成")
+            else:
+                tencent_logger.warning(f"⚠️ 原创声明处理失败 (步骤{result['step']}): {result['message']}")
+            
+        except Exception as e:
+            tencent_logger.warning(f"处理Shadow DOM原创声明时出错: {e}")
+            # 不抛出异常，因为原创声明是可选的
 
     async def click_publish(self, page):
-        """发布视频"""
+        """发布视频 - 简化版本（原创声明已在之前处理）"""
         try:
+            # 点击发表按钮
             publish_button = page.locator('div.form-btns button:has-text("发表")')
             await publish_button.click()
-            await page.wait_for_url("https://channels.weixin.qq.com/platform/post/list", timeout=10000)
-            tencent_logger.success("发布成功!")
+            tencent_logger.info("已点击发表按钮")
+            
+            # 等待页面跳转到列表页
+            try:
+                await page.wait_for_url("https://channels.weixin.qq.com/platform/post/list", timeout=15000)
+                tencent_logger.success("发布成功，已跳转到列表页!")
+            except Exception as nav_error:
+                # 如果跳转超时，检查当前页面状态
+                current_url = page.url
+                tencent_logger.warning(f"页面跳转超时，当前URL: {current_url}")
+                
+                # 检查是否有其他需要处理的弹窗或错误信息
+                error_elements = await page.locator('.error, .alert, .warning, [class*="error"], [class*="alert"]').count()
+                if error_elements > 0:
+                    error_text = await page.locator('.error, .alert, .warning, [class*="error"], [class*="alert"]').first.inner_text()
+                    tencent_logger.error(f"发布失败，错误信息: {error_text}")
+                    raise Exception(f"发布失败: {error_text}")
+                
+                # 检查发表按钮状态
+                publish_btn_disabled = await page.locator('button:has-text("发表")[disabled]').count() > 0
+                if not publish_btn_disabled:
+                    tencent_logger.warning("发表按钮仍可点击，可能发布未成功")
+                    raise Exception("发布状态不明确，发表按钮仍可用")
+                
+                # 如果没有明显错误，假设发布成功
+                tencent_logger.info("未发现错误信息，假设发布成功")
+                
         except Exception as e:
             tencent_logger.error(f"发布失败: {e}")
+            
+            # 尝试截图以便调试
+            try:
+                screenshot_path = f"debug_publish_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                await page.screenshot(path=screenshot_path)
+                tencent_logger.info(f"已保存错误截图: {screenshot_path}")
+            except:
+                pass
+                
             raise
 
     async def add_collection(self, page):
