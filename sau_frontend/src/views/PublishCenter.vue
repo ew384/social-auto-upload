@@ -781,16 +781,8 @@ const publishTask = async (task) => {
       title: task.title,
       tags: task.topics || [], // 话题数组（不带#）
       fileList: task.videos.map((video) => {
-        // 提取文件路径，去掉可能的UUID前缀
-        let filePath = video.path || video.name;
-        if (filePath.includes("_")) {
-          // 如果包含UUID前缀，提取实际文件名
-          const parts = filePath.split("_");
-          if (parts.length > 1) {
-            filePath = parts.slice(1).join("_");
-          }
-        }
-        return filePath;
+        // 直接返回完整的文件路径，包含UUID
+        return video.path || video.name;
       }),
       accountList: task.selectedAccounts.map((accountId) => {
         const account = availableAccounts.value.find(

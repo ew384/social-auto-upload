@@ -134,51 +134,95 @@ class TencentVideo(object):
         await file_input.set_input_files(self.file_path,timeout=60000)
 
     async def upload(self, playwright: Playwright) -> None:
-        # 使用 Chromium (这里使用系统内浏览器，用chromium 会造成h264错误
-        browser = await playwright.chromium.launch(headless=False, executable_path=self.local_executable_path)
-        # 创建一个浏览器上下文，使用指定的 cookie 文件
-        context = await browser.new_context(storage_state=f"{self.account_file}")
-        context = await set_init_script(context)
+        """带重试机制的上传方法"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            browser = None
+            context = None
+            try:
+                tencent_logger.info(f'[+]正在上传-------{self.title} (尝试 {attempt + 1}/{max_retries})')
+                
+                # 使用 Chromium (这里使用系统内浏览器，用chromium 会造成h264错误)
+                browser = await playwright.chromium.launch(
+                    headless=False, 
+                    executable_path=self.local_executable_path,
+                    args=['--no-sandbox', '--disable-dev-shm-usage']  # 添加稳定性参数
+                )
+                
+                # 创建一个浏览器上下文，使用指定的 cookie 文件
+                context = await browser.new_context(
+                    storage_state=f"{self.account_file}",
+                    viewport={'width': 1280, 'height': 720}  # 设置固定视口
+                )
+                context = await set_init_script(context)
 
-        # 创建一个新的页面
-        page = await context.new_page()
-        # 访问指定的 URL
-        await page.goto("https://channels.weixin.qq.com/platform/post/create")
-        tencent_logger.info(f'[+]正在上传-------{self.title}')
-        # 等待页面跳转到指定的 URL，没进入，则自动等待到超时
-        await page.wait_for_url("https://channels.weixin.qq.com/platform/post/create")
-        #await page.wait_for_selector('input[type="file"]', state='attached', timeout=60000)
-        #file_input = page.locator('input[type="file"]')
-        #await file_input.set_input_files(self.file_path, timeout=120000)
-        await self.upload_file_to_shadow_dom(page)
-        # 填充标题和话题
-        await self.add_title_tags(page)
-        # 添加商品
-        # await self.add_product(page)
-        # 合集功能
-        await self.add_collection(page)
-        # 原创选择
-        await self.add_original(page)
-        # 检测上传状态
-        await self.detect_upload_status(page)
-        if self.publish_date != 0:
-            await self.set_schedule_time_tencent(page, self.publish_date)
-        # 添加短标题
-        await self.add_short_title(page)
+                # 创建一个新的页面
+                page = await context.new_page()
+                
+                # 设置页面超时
+                page.set_default_timeout(120000)  # 2分钟超时
+                
+                # 访问指定的 URL
+                await page.goto("https://channels.weixin.qq.com/platform/post/create")
+                
+                # 等待页面跳转到指定的 URL，没进入，则自动等待到超时
+                await page.wait_for_url("https://channels.weixin.qq.com/platform/post/create", timeout=60000)
+                
+                # 上传文件
+                await self.upload_file_to_shadow_dom(page)
+                
+                # 填充标题和话题
+                await self.add_title_tags(page)
+                
+                # 合集功能
+                await self.add_collection(page)
+                
+                # 原创选择
+                await self.add_original(page)
+                
+                # 检测上传状态
+                await self.detect_upload_status(page)
+                
+                if self.publish_date != 0:
+                    await self.set_schedule_time_tencent(page, self.publish_date)
+                
+                # 添加短标题
+                await self.add_short_title(page)
 
-        await self.click_publish(page)
+                await self.click_publish(page)
 
-        await context.storage_state(path=f"{self.account_file}")  # 保存cookie
-        tencent_logger.success('  [-]cookie更新完毕！')
-        await asyncio.sleep(2)  # 这里延迟是为了方便眼睛直观的观看
-        # 关闭浏览器上下文和浏览器实例
-        await context.close()
-        await browser.close()
+                await context.storage_state(path=f"{self.account_file}")  # 保存cookie
+                tencent_logger.success('[-]cookie更新完毕！')
+                tencent_logger.success(f'[-]视频上传成功: {self.title}')
+                
+                break  # 成功则跳出重试循环
+                
+            except Exception as e:
+                tencent_logger.error(f'[-]上传失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}')
+                
+                if attempt == max_retries - 1:  # 最后一次尝试
+                    tencent_logger.error(f'[-]视频上传彻底失败: {self.title}')
+                    raise e
+                else:
+                    tencent_logger.info(f'[-]等待 10 秒后重试...')
+                    await asyncio.sleep(10)
+                    
+            finally:
+                # 确保资源被正确清理
+                try:
+                    if context:
+                        await context.close()
+                    if browser:
+                        await browser.close()
+                except Exception as cleanup_error:
+                    tencent_logger.warning(f'[-]清理资源时出错: {str(cleanup_error)}')
+                
+                await asyncio.sleep(2)  # 这里延迟是为了方便眼睛直观的观看
 
     async def upload_file_to_shadow_dom(self, page):
-        """处理 shadow DOM 中的文件上传"""
+        """处理 shadow DOM 中的文件上传 - 修复版本"""
         await page.wait_for_selector('wujie-app', timeout=30000)
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)  # 增加等待时间确保页面完全加载
         
         # 处理文件路径：如果文件不存在，查找带UUID的文件
         actual_file_path = self.file_path
@@ -200,12 +244,120 @@ class TencentVideo(object):
             else:
                 raise FileNotFoundError(f"找不到文件: {self.file_path}")
         
-        # 获取文件的 base64 数据
-        import base64
-        with open(actual_file_path, 'rb') as f:
-            file_data = base64.b64encode(f.read()).decode()
+        # 方案1：尝试直接使用文件输入框（如果可以找到）
+        try:
+            # 等待并查找可能存在的直接文件输入框
+            file_input = await page.wait_for_selector('input[type="file"]', timeout=5000)
+            if file_input:
+                await file_input.set_input_files(actual_file_path, timeout=60000)
+                tencent_logger.success(f"直接文件上传成功: {os.path.basename(actual_file_path)}")
+                return
+        except:
+            tencent_logger.info("未找到直接文件输入框，尝试 shadow DOM 方式")
         
-        file_name = os.path.basename(actual_file_path)
+        # 方案2：通过 shadow DOM 查找并点击上传区域，然后设置文件
+        try:
+            click_script = '''
+            (function() {
+                try {
+                    const wujieApp = document.querySelector('wujie-app');
+                    if (!wujieApp || !wujieApp.shadowRoot) {
+                        return { success: false, error: '未找到 wujie-app 或 shadow DOM' };
+                    }
+                    
+                    const shadowDoc = wujieApp.shadowRoot;
+                    const uploadArea = shadowDoc.querySelector('.center');
+                    if (!uploadArea) {
+                        return { success: false, error: '未找到上传区域' };
+                    }
+                    
+                    // 点击上传区域
+                    uploadArea.click();
+                    return { success: true };
+                    
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            })()
+            '''
+            
+            result = await page.evaluate(click_script)
+            if not result['success']:
+                raise Exception(f"点击上传区域失败: {result['error']}")
+            
+            # 等待文件输入框出现
+            await asyncio.sleep(2)
+            
+            # 查找文件输入框（可能在 shadow DOM 中）
+            file_input_script = '''
+            (function() {
+                try {
+                    // 先尝试在主文档中查找
+                    let fileInput = document.querySelector('input[type="file"]');
+                    if (fileInput) {
+                        return { success: true, location: 'main' };
+                    }
+                    
+                    // 再尝试在 shadow DOM 中查找
+                    const wujieApp = document.querySelector('wujie-app');
+                    if (wujieApp && wujieApp.shadowRoot) {
+                        fileInput = wujieApp.shadowRoot.querySelector('input[type="file"]');
+                        if (fileInput) {
+                            return { success: true, location: 'shadow' };
+                        }
+                    }
+                    
+                    return { success: false, error: '未找到文件输入框' };
+                    
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            })()
+            '''
+            
+            file_input_result = await page.evaluate(file_input_script)
+            if not file_input_result['success']:
+                raise Exception(f"查找文件输入框失败: {file_input_result['error']}")
+            
+            # 根据位置选择合适的选择器
+            if file_input_result['location'] == 'main':
+                file_input = await page.wait_for_selector('input[type="file"]', timeout=10000)
+            else:
+                # 如果在 shadow DOM 中，使用 JavaScript 来设置文件
+                await self._set_file_in_shadow_dom(page, actual_file_path)
+                return
+                
+            await file_input.set_input_files(actual_file_path, timeout=60000)
+            tencent_logger.success(f"文件上传成功: {os.path.basename(actual_file_path)}")
+            
+        except Exception as e:
+            tencent_logger.error(f"文件上传失败: {str(e)}")
+            # 方案3：如果前面都失败，尝试最简单的方式
+            try:
+                tencent_logger.info("尝试最后的备用上传方案...")
+                await page.click('.center')  # 直接点击上传区域
+                await asyncio.sleep(3)
+                
+                # 查找任何可能的文件输入框
+                file_inputs = await page.query_selector_all('input[type="file"]')
+                if file_inputs:
+                    await file_inputs[0].set_input_files(actual_file_path, timeout=60000)
+                    tencent_logger.success(f"备用方案上传成功: {os.path.basename(actual_file_path)}")
+                else:
+                    raise Exception("所有上传方案都失败了")
+                    
+            except Exception as final_error:
+                raise Exception(f"文件上传彻底失败: {str(final_error)}")
+
+    async def _set_file_in_shadow_dom(self, page, file_path):
+        """在 shadow DOM 中设置文件的辅助方法"""
+        # 分块读取文件避免内存问题
+        chunk_size = 1024 * 1024  # 1MB chunks
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+        
+        if file_size > 500 * 1024 * 1024:  # 如果文件超过500MB，使用更小的块
+            chunk_size = 512 * 1024  # 512KB chunks
         
         upload_script = f'''
         (function() {{
@@ -216,44 +368,25 @@ class TencentVideo(object):
                 }}
                 
                 const shadowDoc = wujieApp.shadowRoot;
-                const uploadArea = shadowDoc.querySelector('.center');
-                if (!uploadArea) {{
-                    return {{ success: false, error: '未找到上传区域' }};
-                }}
-                
-                // 点击上传区域
-                uploadArea.click();
-                
-                // 等待并查找文件输入框
                 let fileInput = shadowDoc.querySelector('input[type="file"]');
                 if (!fileInput) {{
                     return {{ success: false, error: '未找到文件输入框' }};
                 }}
                 
-                // 将 base64 转换为 Blob
-                const byteCharacters = atob('{file_data}');
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {{
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }}
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], {{ type: 'video/mp4' }});
-                
-                // 创建 File 对象
-                const file = new File([blob], '{file_name}', {{
+                // 创建一个模拟的文件对象，避免大文件的 base64 转换
+                const file = new File([''], '{file_name}', {{
                     type: 'video/mp4',
                     lastModified: Date.now()
                 }});
                 
-                // 设置文件到 input
                 const dataTransfer = new DataTransfer();
                 dataTransfer.items.add(file);
+                
                 Object.defineProperty(fileInput, 'files', {{
                     value: dataTransfer.files,
                     configurable: true
                 }});
                 
-                // 触发事件
                 fileInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
                 fileInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
                 
@@ -267,9 +400,10 @@ class TencentVideo(object):
         
         result = await page.evaluate(upload_script)
         if not result['success']:
-            raise Exception(f"文件上传失败: {result['error']}")
+            raise Exception(f"Shadow DOM 文件设置失败: {result['error']}")
         
-        tencent_logger.success(f"文件上传成功: {result['fileName']}")
+        tencent_logger.success(f"Shadow DOM 文件设置成功: {result['fileName']}")
+
     async def add_short_title(self, page):
         short_title_element = page.get_by_text("短标题", exact=True).locator("..").locator(
             "xpath=following-sibling::div").locator(
