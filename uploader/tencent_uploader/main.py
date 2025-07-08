@@ -133,199 +133,633 @@ class TencentVideo(object):
         file_input = page.locator('input[type="file"]')
         await file_input.set_input_files(self.file_path,timeout=60000)
 
-    async def upload(self, playwright: Playwright) -> None:
-        # 使用 Chromium (这里使用系统内浏览器，用chromium 会造成h264错误
-        browser = await playwright.chromium.launch(headless=False, executable_path=self.local_executable_path)
-        # 创建一个浏览器上下文，使用指定的 cookie 文件
-        context = await browser.new_context(storage_state=f"{self.account_file}")
-        context = await set_init_script(context)
-
-        # 创建一个新的页面
-        page = await context.new_page()
-        # 访问指定的 URL
-        await page.goto("https://channels.weixin.qq.com/platform/post/create")
-        tencent_logger.info(f'[+]正在上传-------{self.title}')
-        # 等待页面跳转到指定的 URL，没进入，则自动等待到超时
-        await page.wait_for_url("https://channels.weixin.qq.com/platform/post/create")
-        #await page.wait_for_selector('input[type="file"]', state='attached', timeout=60000)
-        #file_input = page.locator('input[type="file"]')
-        #await file_input.set_input_files(self.file_path, timeout=120000)
-        await self.upload_file_to_shadow_dom(page)
-        # 填充标题和话题
-        await self.add_title_tags(page)
-        # 添加商品
-        # await self.add_product(page)
-        # 合集功能
-        await self.add_collection(page)
-        # 原创选择
-        await self.add_original(page)
-        # 检测上传状态
-        await self.detect_upload_status(page)
-        if self.publish_date != 0:
-            await self.set_schedule_time_tencent(page, self.publish_date)
-        # 添加短标题
-        await self.add_short_title(page)
-
-        await self.click_publish(page)
-
-        await context.storage_state(path=f"{self.account_file}")  # 保存cookie
-        tencent_logger.success('  [-]cookie更新完毕！')
-        await asyncio.sleep(2)  # 这里延迟是为了方便眼睛直观的观看
-        # 关闭浏览器上下文和浏览器实例
-        await context.close()
-        await browser.close()
-
     async def upload_file_to_shadow_dom(self, page):
-        """处理 shadow DOM 中的文件上传"""
+        """简化版本 - 直接参考成功的render.ts逻辑"""
         await page.wait_for_selector('wujie-app', timeout=30000)
         await asyncio.sleep(2)
         
-        # 处理文件路径：如果文件不存在，查找带UUID的文件
+        # 处理文件路径
         actual_file_path = self.file_path
         if not os.path.exists(self.file_path):
             import glob
-            # 提取原始文件名
             original_filename = os.path.basename(self.file_path)
             video_dir = os.path.dirname(self.file_path)
-            
-            # 查找匹配的文件（包含UUID前缀的文件）
             pattern = os.path.join(video_dir, f"*_{original_filename}")
             matching_files = glob.glob(pattern)
             
             if matching_files:
-                # 选择最新的文件
                 matching_files.sort(key=os.path.getmtime, reverse=True)
                 actual_file_path = matching_files[0]
                 tencent_logger.info(f"找到实际文件: {original_filename} -> {os.path.basename(actual_file_path)}")
             else:
                 raise FileNotFoundError(f"找不到文件: {self.file_path}")
         
-        # 获取文件的 base64 数据
-        import base64
+        tencent_logger.info(f"准备上传文件: {actual_file_path}")
+        
+        # 读取文件为binary buffer
         with open(actual_file_path, 'rb') as f:
-            file_data = base64.b64encode(f.read()).decode()
+            file_buffer = f.read()
         
         file_name = os.path.basename(actual_file_path)
+        file_size = len(file_buffer)
         
+        tencent_logger.info(f"文件读取完成: {file_name}, 大小: {file_size} bytes")
+        
+        # 直接参考成功代码的核心逻辑
         upload_script = f'''
-        (function() {{
+        (async function() {{
             try {{
-                const wujieApp = document.querySelector('wujie-app');
-                if (!wujieApp || !wujieApp.shadowRoot) {{
-                    return {{ success: false, error: '未找到 wujie-app 或 shadow DOM' }};
+                console.log("=== 开始上传流程 ===");
+                
+                // 步骤1: 查找shadow DOM - 完全按照成功代码的方式
+                const shadowm = document.querySelector('.wujie_iframe');
+                if (!shadowm) {{
+                    console.log("未找到 .wujie_iframe");
+                    return {{ success: false, error: '未找到 .wujie_iframe' }};
                 }}
+                console.log("✓ 找到 .wujie_iframe");
                 
-                const shadowDoc = wujieApp.shadowRoot;
-                const uploadArea = shadowDoc.querySelector('.center');
-                if (!uploadArea) {{
-                    return {{ success: false, error: '未找到上传区域' }};
+                if (!shadowm.shadowRoot) {{
+                    console.log("shadowRoot 不存在");
+                    return {{ success: false, error: 'shadowRoot 不存在' }};
                 }}
+                console.log("✓ shadowRoot 存在");
                 
-                // 点击上传区域
-                uploadArea.click();
+                // 步骤2: 查找上传区域 - 完全按照成功代码
+                const videoDom = shadowm.shadowRoot.querySelector('.upload');
+                if (!videoDom) {{
+                    console.log("未找到 .upload 元素");
+                    return {{ success: false, error: '未找到 .upload 元素' }};
+                }}
+                console.log("✓ 找到 .upload 元素");
                 
-                // 等待并查找文件输入框
-                let fileInput = shadowDoc.querySelector('input[type="file"]');
-                if (!fileInput) {{
+                // 步骤3: 查找文件输入框 - 完全按照成功代码
+                const inputDom = videoDom.querySelector('input[type="file"]');
+                if (!inputDom) {{
+                    console.log("未找到文件输入框");
                     return {{ success: false, error: '未找到文件输入框' }};
                 }}
+                console.log("✓ 找到文件输入框");
                 
-                // 将 base64 转换为 Blob
-                const byteCharacters = atob('{file_data}');
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {{
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                // 步骤4: 创建文件对象 - 使用成功代码的方式
+                console.log("开始创建文件对象...");
+                const uint8Array = new Uint8Array({list(file_buffer)});
+                console.log("✓ Uint8Array 创建完成, 长度:", uint8Array.length);
+                
+                const file = new File([uint8Array], '{file_name}', {{
+                    type: 'video/avi',
+                    lastModified: Date.now()
+                }});
+                console.log("✓ File对象创建完成:", file.name, file.size, file.type);
+                
+                // 步骤5: 使用DataTransfer - 完全按照成功代码的方式
+                const files = new DataTransfer();
+                files.items.add(file);
+                console.log("✓ DataTransfer 创建完成");
+                
+                // 步骤6: 设置files属性 - 核心步骤，完全按照成功代码
+                Object.defineProperty(inputDom, 'files', {{
+                    value: files.files,
+                    configurable: true
+                }});
+                console.log("✓ files 属性设置完成");
+                
+                // 步骤7: 触发change事件 - 完全按照成功代码的方式
+                const changeEvent = new Event('change', {{ bubbles: true }});
+                inputDom.dispatchEvent(changeEvent);
+                console.log("✓ change事件触发完成");
+                
+                // 等待一下
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                console.log("=== 上传流程完成 ===");
+                
+                return {{ 
+                    success: true, 
+                    fileName: '{file_name}',
+                    fileSize: uint8Array.length
+                }};
+                
+            }} catch (e) {{
+                console.error("上传过程出错:", e.message);
+                console.error("错误堆栈:", e.stack);
+                return {{ success: false, error: e.message, stack: e.stack }};
+            }}
+        }})()
+        '''
+        
+        tencent_logger.info("开始执行JavaScript上传脚本...")
+        
+        try:
+            result = await page.evaluate(upload_script)
+            tencent_logger.info(f"JavaScript执行结果: {result}")
+            
+            if not result['success']:
+                raise Exception(f"JavaScript上传失败: {result.get('error', 'Unknown error')}")
+            
+            tencent_logger.success(f"文件上传成功: {result['fileName']}")
+            
+            # 立即检查上传是否开始
+            await asyncio.sleep(2)
+            await self.check_upload_started(page)
+            
+        except Exception as e:
+            tencent_logger.error(f"JavaScript执行异常: {str(e)}")
+            raise
+
+
+    async def check_upload_started(self, page):
+        """检查上传是否真的开始了"""
+        check_script = '''
+        (function() {
+            try {
+                const shadowm = document.querySelector('.wujie_iframe');
+                if (!shadowm || !shadowm.shadowRoot) {
+                    return { started: false, reason: 'no shadow DOM' };
+                }
+                
+                const shadowDoc = shadowm.shadowRoot;
+                
+                // 检查是否有任何变化
+                const checks = {
+                    hasVideo: !!shadowDoc.querySelector('video'),
+                    hasProgress: !!shadowDoc.querySelector('.progress'),
+                    hasUploading: !!shadowDoc.querySelector('[class*="upload"]'),
+                    hasStatus: !!shadowDoc.querySelector('[class*="status"]'),
+                    inputFiles: shadowDoc.querySelector('input[type="file"]')?.files?.length || 0
+                };
+                
+                const started = checks.hasVideo || checks.hasProgress || checks.inputFiles > 0;
+                
+                return {
+                    started: started,
+                    checks: checks,
+                    reason: started ? 'upload detected' : 'no upload signs'
+                };
+                
+            } catch (e) {
+                return { started: false, reason: e.message };
+            }
+        })()
+        '''
+        
+        result = await page.evaluate(check_script)
+        tencent_logger.info(f"上传状态检查: {result}")
+        
+        if not result['started']:
+            tencent_logger.warning(f"上传可能未开始: {result['reason']}")
+        else:
+            tencent_logger.success("上传已开始!")
+
+    # 添加一个简单的上传状态检查方法
+    async def check_if_uploading_simple(self, page):
+        """简单检查是否在上传 - 避免复杂选择器"""
+        
+        simple_check = '''
+        (function() {
+            try {
+                // 1. 检查shadow DOM中的视频和进度
+                const shadowm = document.querySelector('.wujie_iframe');
+                let shadowInfo = { found: false };
+                
+                if (shadowm && shadowm.shadowRoot) {
+                    const shadowDoc = shadowm.shadowRoot;
+                    shadowInfo = {
+                        found: true,
+                        hasVideo: shadowDoc.querySelector('video') !== null,
+                        hasProgress: shadowDoc.querySelector('.progress') !== null,
+                        inputHasFiles: shadowDoc.querySelector('input[type="file"]')?.files?.length > 0
+                    };
+                }
+                
+                // 2. 检查发布按钮状态 - 使用原始代码的方式
+                let buttonInfo = { found: false };
+                try {
+                    const button = document.querySelector('div.form-btns button') ||
+                                document.querySelector('.weui-desktop-btn');
+                    if (button) {
+                        buttonInfo = {
+                            found: true,
+                            disabled: button.disabled,
+                            className: button.className,
+                            text: button.textContent
+                        };
+                    }
+                } catch (e) {
+                    // 按钮查找失败，忽略
+                }
+                
+                // 3. 检查网络活动
+                const resources = performance.getEntriesByType('resource');
+                const recentUploads = resources.filter(r => 
+                    (r.name.includes('upload') || r.name.includes('mmfinder')) && 
+                    (Date.now() - r.startTime < 60000) // 最近1分钟
+                );
+                
+                return {
+                    success: true,
+                    timestamp: Date.now(),
+                    shadow: shadowInfo,
+                    button: buttonInfo,
+                    recentUploads: recentUploads.length,
+                    isUploading: shadowInfo.hasVideo || shadowInfo.hasProgress || 
+                                shadowInfo.inputHasFiles || recentUploads.length > 0
+                };
+                
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        })()
+        '''
+        
+        try:
+            result = await page.evaluate(simple_check)
+            return result
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+
+    # 更新监控方法
+    async def monitor_upload_simple(self, page, duration_minutes=5):
+        """简单监控上传状态"""
+        tencent_logger.info(f"开始监控上传状态 {duration_minutes} 分钟...")
+        
+        checks_per_minute = 6  # 每10秒检查一次
+        total_checks = duration_minutes * checks_per_minute
+        
+        for i in range(total_checks):
+            status = await self.check_if_uploading_simple(page)
+            
+            if status['success']:
+                shadow = status['shadow']
+                button = status['button']
+                is_uploading = status['isUploading']
+                recent_uploads = status['recentUploads']
+                
+                # 格式化输出
+                shadow_status = f"视频={shadow.get('hasVideo', False)}, 进度={shadow.get('hasProgress', False)}, 文件={shadow.get('inputHasFiles', False)}"
+                button_status = f"按钮={'禁用' if button.get('disabled') else '启用'}" if button.get('found') else "按钮未找到"
+                
+                tencent_logger.info(f"监控 {i+1}/{total_checks}: {shadow_status}, {button_status}, 网络请求={recent_uploads}")
+                
+                if is_uploading:
+                    tencent_logger.success("✅ 检测到上传活动!")
+                    
+                    # 检测到上传后，减少检查频率
+                    if i > 0 and i % 12 == 0:  # 每2分钟报告一次
+                        tencent_logger.info(f"上传进行中... ({i//6}分钟)")
+                else:
+                    if i < 6:  # 前1分钟
+                        tencent_logger.info("🔍 等待上传开始...")
+                    elif i < 18:  # 前3分钟
+                        tencent_logger.warning("⚠️ 仍未检测到上传活动")
+                    else:  # 3分钟后
+                        tencent_logger.error("❌ 可能上传失败或未开始")
+            else:
+                tencent_logger.warning(f"状态检查失败: {status.get('error')}")
+            
+            await asyncio.sleep(10)  # 每10秒检查一次
+        
+        tencent_logger.info("监控结束")
+
+
+    # 立即检查当前状态的方法
+    async def check_current_status_now(self, page):
+        """立即检查当前状态"""
+        tencent_logger.info("=== 立即检查当前状态 ===")
+        
+        status = await self.check_if_uploading_simple(page)
+        
+        if status['success']:
+            shadow = status['shadow']
+            button = status['button']
+            
+            tencent_logger.info(f"Shadow DOM: {shadow}")
+            tencent_logger.info(f"按钮状态: {button}")
+            tencent_logger.info(f"最近网络请求: {status['recentUploads']}")
+            tencent_logger.info(f"是否正在上传: {status['isUploading']}")
+            
+            if status['isUploading']:
+                tencent_logger.success("🎉 上传正在进行中!")
+                return True
+            else:
+                tencent_logger.warning("❌ 未检测到上传活动")
+                return False
+        else:
+            tencent_logger.error(f"状态检查失败: {status['error']}")
+            return False
+
+
+    async def upload_file_to_shadow_dom(self, page):
+        """简化的文件上传方法"""
+        await page.wait_for_selector('wujie-app', timeout=30000)
+        await asyncio.sleep(2)
+        
+        # 处理文件路径
+        actual_file_path = self.file_path
+        if not os.path.exists(self.file_path):
+            import glob
+            original_filename = os.path.basename(self.file_path)
+            video_dir = os.path.dirname(self.file_path)
+            pattern = os.path.join(video_dir, f"*_{original_filename}")
+            matching_files = glob.glob(pattern)
+            
+            if matching_files:
+                matching_files.sort(key=os.path.getmtime, reverse=True)
+                actual_file_path = matching_files[0]
+                tencent_logger.info(f"找到实际文件: {original_filename} -> {os.path.basename(actual_file_path)}")
+            else:
+                raise FileNotFoundError(f"找不到文件: {self.file_path}")
+        
+        tencent_logger.info(f"准备上传文件: {actual_file_path}")
+        
+        # 读取文件
+        with open(actual_file_path, 'rb') as f:
+            file_buffer = f.read()
+        
+        file_name = os.path.basename(actual_file_path)
+        tencent_logger.info(f"文件读取完成: {file_name}, 大小: {len(file_buffer)} bytes")
+        
+        # 上传脚本
+        upload_script = f'''
+        (async function() {{
+            try {{
+                console.log("=== 开始上传 ===");
+                
+                const shadowm = document.querySelector('.wujie_iframe');
+                if (!shadowm?.shadowRoot) {{
+                    return {{ success: false, error: '未找到shadow DOM' }};
                 }}
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], {{ type: 'video/mp4' }});
                 
-                // 创建 File 对象
-                const file = new File([blob], '{file_name}', {{
-                    type: 'video/mp4',
+                const videoDom = shadowm.shadowRoot.querySelector('.upload');
+                if (!videoDom) {{
+                    return {{ success: false, error: '未找到.upload' }};
+                }}
+                
+                const inputDom = videoDom.querySelector('input[type="file"]');
+                if (!inputDom) {{
+                    return {{ success: false, error: '未找到input' }};
+                }}
+                
+                console.log("DOM元素检查完成");
+                
+                const uint8Array = new Uint8Array({list(file_buffer)});
+                console.log("Uint8Array创建完成, 长度:", uint8Array.length);
+                
+                const file = new File([uint8Array], '{file_name}', {{
+                    type: 'video/avi',
                     lastModified: Date.now()
                 }});
                 
-                // 设置文件到 input
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                Object.defineProperty(fileInput, 'files', {{
-                    value: dataTransfer.files,
+                const files = new DataTransfer();
+                files.items.add(file);
+                
+                Object.defineProperty(inputDom, 'files', {{
+                    value: files.files,
                     configurable: true
                 }});
                 
-                // 触发事件
-                fileInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                fileInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                inputDom.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                console.log("=== 上传触发完成 ===");
                 
                 return {{ success: true, fileName: '{file_name}' }};
                 
             }} catch (e) {{
+                console.error("上传失败:", e);
                 return {{ success: false, error: e.message }};
             }}
         }})()
         '''
         
-        result = await page.evaluate(upload_script)
-        if not result['success']:
-            raise Exception(f"文件上传失败: {result['error']}")
+        tencent_logger.info("开始执行JavaScript上传脚本...")
         
-        tencent_logger.success(f"文件上传成功: {result['fileName']}")
-    async def add_short_title(self, page):
-        short_title_element = page.get_by_text("短标题", exact=True).locator("..").locator(
-            "xpath=following-sibling::div").locator(
-            'span input[type="text"]')
-        if await short_title_element.count():
-            short_title = format_str_for_short_title(self.title)
-            await short_title_element.fill(short_title)
+        try:
+            # 设置60秒超时，给大文件更多时间
+            result = await asyncio.wait_for(page.evaluate(upload_script), timeout=60.0)
+            
+            if not result['success']:
+                raise Exception(f"上传失败: {result.get('error')}")
+            
+            tencent_logger.success("上传脚本执行成功!")
+            
+        except asyncio.TimeoutError:
+            tencent_logger.warning("JavaScript执行超时，但可能仍在后台处理...")
+            # 不要失败，继续监控
+        except Exception as e:
+            tencent_logger.error(f"JavaScript执行失败: {e}")
+            raise
+
+
+    # ==== 3. 添加简单的检查方法 ====
+    async def check_if_uploading_simple(self, page):
+        """简单检查是否在上传"""
+        simple_check = '''
+        (function() {
+            try {
+                const shadowm = document.querySelector('.wujie_iframe');
+                let shadowInfo = { found: false };
+                
+                if (shadowm && shadowm.shadowRoot) {
+                    const shadowDoc = shadowm.shadowRoot;
+                    shadowInfo = {
+                        found: true,
+                        hasVideo: shadowDoc.querySelector('video') !== null,
+                        hasProgress: shadowDoc.querySelector('.progress') !== null,
+                        inputHasFiles: shadowDoc.querySelector('input[type="file"]')?.files?.length > 0
+                    };
+                }
+                
+                let buttonInfo = { found: false };
+                try {
+                    const button = document.querySelector('div.form-btns button') ||
+                                document.querySelector('.weui-desktop-btn');
+                    if (button) {
+                        buttonInfo = {
+                            found: true,
+                            disabled: button.disabled,
+                            className: button.className
+                        };
+                    }
+                } catch (e) {
+                    // 忽略
+                }
+                
+                const resources = performance.getEntriesByType('resource');
+                const recentUploads = resources.filter(r => 
+                    (r.name.includes('upload') || r.name.includes('mmfinder')) && 
+                    (Date.now() - r.startTime < 60000)
+                );
+                
+                return {
+                    success: true,
+                    shadow: shadowInfo,
+                    button: buttonInfo,
+                    recentUploads: recentUploads.length,
+                    isUploading: shadowInfo.hasVideo || shadowInfo.hasProgress || 
+                                shadowInfo.inputHasFiles || recentUploads.length > 0
+                };
+                
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        })()
+        '''
+        
+        try:
+            result = await page.evaluate(simple_check)
+            return result
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+
+    # ==== 4. 修改主upload方法 ====
+    async def upload(self, playwright: Playwright) -> None:
+        """主上传方法"""
+        if not os.path.exists(self.file_path):
+            raise FileNotFoundError(f"文件不存在: {self.file_path}")
+        
+        file_size_mb = os.path.getsize(self.file_path) / (1024 * 1024)
+        tencent_logger.info(f"视频文件大小: {file_size_mb:.2f}MB")
+        
+        browser = await playwright.chromium.launch(
+            headless=False, 
+            executable_path=self.local_executable_path
+        )
+        
+        try:
+            context = await browser.new_context(storage_state=f"{self.account_file}")
+            context = await set_init_script(context)
+            page = await context.new_page()
+            
+            # 网络监控 - 只监控上传相关请求
+            page.on("request", lambda req: tencent_logger.info(f"🌐 请求: {req.method} {req.url}") 
+                    if 'upload' in req.url or 'mmfinder' in req.url else None)
+            page.on("response", lambda res: tencent_logger.info(f"📥 响应: {res.status} {res.url}") 
+                    if 'upload' in res.url or 'mmfinder' in res.url else None)
+            
+            await page.goto("https://channels.weixin.qq.com/platform/post/create")
+            tencent_logger.info(f'[+]正在上传-------{self.title}')
+            
+            await page.wait_for_url("https://channels.weixin.qq.com/platform/post/create")
+            await page.wait_for_selector('.wujie_iframe', timeout=30000)
+            await asyncio.sleep(3)
+            
+            # 上传文件
+            await self.upload_file_to_shadow_dom(page)
+            
+            # 立即开始监控上传状态
+            tencent_logger.info("开始监控上传状态...")
+            upload_detected = False
+            
+            # 监控5分钟
+            for i in range(30):  # 30次检查，每次10秒
+                await asyncio.sleep(10)
+                
+                status = await self.check_if_uploading_simple(page)
+                
+                if status['success']:
+                    shadow = status['shadow']
+                    button = status['button']
+                    recent_uploads = status['recentUploads']
+                    
+                    # 状态报告
+                    if shadow['hasVideo']:
+                        tencent_logger.success(f"✅ 检测到视频! (检查 {i+1}/30)")
+                        upload_detected = True
+                    elif shadow['hasProgress']:
+                        tencent_logger.success(f"✅ 检测到进度条! (检查 {i+1}/30)")
+                        upload_detected = True
+                    elif shadow['inputHasFiles']:
+                        tencent_logger.info(f"📁 文件已选中 (检查 {i+1}/30)")
+                        upload_detected = True
+                    elif recent_uploads > 0:
+                        tencent_logger.info(f"🌐 网络活动 {recent_uploads} 个请求 (检查 {i+1}/30)")
+                        upload_detected = True
+                    else:
+                        tencent_logger.info(f"🔍 等待上传... (检查 {i+1}/30)")
+                    
+                    # 检查按钮状态
+                    if button['found'] and not button['disabled']:
+                        tencent_logger.success("✅ 发布按钮已启用，上传可能完成!")
+                        break
+                        
+                else:
+                    tencent_logger.warning(f"状态检查失败: {status.get('error')}")
+            
+            if not upload_detected:
+                tencent_logger.error("❌ 5分钟内未检测到上传活动")
+                raise Exception("上传可能失败")
+            
+            # 继续后续流程
+            await self.add_title_tags(page)
+            await self.detect_upload_status_improved(page)
+            await self.click_publish(page)
+            
+            await context.storage_state(path=f"{self.account_file}")
+            tencent_logger.success('上传完成!')
+            
+        finally:
+            try:
+                await context.close()
+                await browser.close()
+            except:
+                pass
+
+
+    # ==== 5. 保留原有的其他方法 ====
+    async def add_title_tags(self, page):
+        """添加标题和标签"""
+        try:
+            await page.wait_for_selector("div.input-editor", timeout=10000)
+            await page.locator("div.input-editor").click()
+            await page.keyboard.type(self.title)
+            await page.keyboard.press("Enter")
+            
+            for tag in self.tags:
+                await page.keyboard.type("#" + tag)
+                await page.keyboard.press("Space")
+            
+            tencent_logger.info(f"标题和标签添加完成")
+            
+        except Exception as e:
+            tencent_logger.warning(f"添加标题失败: {e}")
+
+
+    async def detect_upload_status_improved(self, page):
+        """检测上传完成"""
+        max_wait = 300  # 5分钟
+        start_time = asyncio.get_event_loop().time()
+        
+        while True:
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed > max_wait:
+                raise Exception("上传超时")
+            
+            try:
+                button = page.get_by_role("button", name="发表")
+                button_class = await button.get_attribute('class')
+                
+                if "weui-desktop-btn_disabled" not in button_class:
+                    tencent_logger.success("上传完成!")
+                    break
+                
+                tencent_logger.info(f"上传中... ({elapsed/60:.1f}分钟)")
+                await asyncio.sleep(10)
+                
+            except Exception as e:
+                tencent_logger.warning(f"状态检测异常: {e}")
+                await asyncio.sleep(5)
+
 
     async def click_publish(self, page):
-        while True:
-            try:
-                publish_buttion = page.locator('div.form-btns button:has-text("发表")')
-                if await publish_buttion.count():
-                    await publish_buttion.click()
-                await page.wait_for_url("https://channels.weixin.qq.com/platform/post/list", timeout=5000)
-                tencent_logger.success("  [-]视频发布成功")
-                break
-            except Exception as e:
-                current_url = page.url
-                if "https://channels.weixin.qq.com/platform/post/list" in current_url:
-                    tencent_logger.success("  [-]视频发布成功")
-                    break
-                else:
-                    tencent_logger.exception(f"  [-] Exception: {e}")
-                    tencent_logger.info("  [-] 视频正在发布中...")
-                    await asyncio.sleep(0.5)
-
-    async def detect_upload_status(self, page):
-        while True:
-            # 匹配删除按钮，代表视频上传完毕，如果不存在，代表视频正在上传，则等待
-            try:
-                # 匹配删除按钮，代表视频上传完毕
-                if "weui-desktop-btn_disabled" not in await page.get_by_role("button", name="发表").get_attribute(
-                        'class'):
-                    tencent_logger.info("  [-]视频上传完毕")
-                    break
-                else:
-                    tencent_logger.info("  [-] 正在上传视频中...")
-                    await asyncio.sleep(2)
-                    # 出错了视频出错
-                    if await page.locator('div.status-msg.error').count() and await page.locator(
-                            'div.media-status-content div.tag-inner:has-text("删除")').count():
-                        tencent_logger.error("  [-] 发现上传出错了...准备重试")
-                        await self.handle_upload_error(page)
-            except:
-                tencent_logger.info("  [-] 正在上传视频中...")
-                await asyncio.sleep(2)
-
-    async def add_title_tags(self, page):
-        await page.locator("div.input-editor").click()
-        await page.keyboard.type(self.title)
-        await page.keyboard.press("Enter")
-        for index, tag in enumerate(self.tags, start=1):
-            await page.keyboard.type("#" + tag)
-            await page.keyboard.press("Space")
-        tencent_logger.info(f"成功添加hashtag: {len(self.tags)}")
+        """发布视频"""
+        try:
+            publish_button = page.locator('div.form-btns button:has-text("发表")')
+            await publish_button.click()
+            await page.wait_for_url("https://channels.weixin.qq.com/platform/post/list", timeout=10000)
+            tencent_logger.success("发布成功!")
+        except Exception as e:
+            tencent_logger.error(f"发布失败: {e}")
+            raise
 
     async def add_collection(self, page):
         collection_elements = page.get_by_text("添加到合集").locator("xpath=following-sibling::div").locator(
