@@ -1,0 +1,105 @@
+# === 源代码文件 ===
+src/
+public/
+*.config.js
+*.config.ts
+*.config.mjs
+vite.config.*
+vue.config.*
+webpack.config.*
+rollup.config.*
+.env*
+README.md
+*.md
+
+# === Node.js 相关 ===
+node_modules/
+package-lock.json
+yarn.lock
+.npm/
+.yarn/
+pnpm-lock.yaml
+
+# === 构建和缓存文件 ===
+dist-electron/
+build/
+.next/
+.nuxt/
+.vite/
+.cache/
+.temp/
+.tmp/
+
+# === 开发工具 ===
+.vscode/
+.idea/
+.vs/
+*.log
+logs/
+.eslintrc*
+.prettierrc*
+.editorconfig
+.gitignore
+.gitattributes
+
+# === 版本控制 ===
+.git/
+.svn/
+.hg/
+
+# === 测试文件 ===
+test/
+tests/
+spec/
+__tests__/
+*.test.*
+*.spec.*
+coverage/
+.nyc_output/
+
+# === 文档 ===
+docs/
+documentation/
+
+# === 临时文件 ===
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# === Python 相关（如果有混合项目）===
+*.pyc
+__pycache__/
+.pytest_cache/
+*.py
+
+# === 备份文件 ===
+*.backup
+*.bak
+*.orig
+
+# === 用户数据（重要：不打包用户数据）===
+uploads/
+downloads/
+user-data/
+cookies/
+sessions/
+
+# === 大文件类型 ===
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.iso
+*.dmg
+*.zip
+*.tar.gz
+*.7z
+*.rar
