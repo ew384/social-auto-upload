@@ -14,6 +14,27 @@ from myUtils.login import get_tencent_cookie, douyin_cookie_gen, get_ks_cookie, 
 from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs
 from utils.video_utils import is_video_file
 from datetime import datetime
+import requests
+
+from myUtils.login import (
+    douyin_cookie_gen_multi_browser, 
+    xiaohongshu_cookie_gen_multi_browser,
+    get_tencent_cookie_multi_browser,
+    get_ks_cookie_multi_browser
+)
+
+from myUtils.postVideo import (
+    post_video_DouYin_smart, 
+    post_video_tencent_smart, 
+    post_video_ks_smart, 
+    post_video_xhs_smart,
+    set_browser_mode,
+    get_browser_mode,
+    batch_publish_videos_multi_browser
+)
+from myUtils.auth import check_cookie_multi_browser
+
+USE_MULTI_ACCOUNT_BROWSER = True  # 设置为 True 启用新方式
 active_queues = {}
 app = Flask(__name__)
 
@@ -179,7 +200,6 @@ def get_all_files():
         }), 500
 
 
-
 @app.route("/getValidAccounts", methods=['GET'])
 async def getValidAccounts():
     force_check = request.args.get('force', 'false').lower() == 'true'
@@ -187,7 +207,6 @@ async def getValidAccounts():
     with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
         cursor = conn.cursor()
         
-        # 获取所有账号信息（包括新添加的字段）
         cursor.execute('''
         SELECT id, type, filePath, userName, status, last_check_time, check_interval 
         FROM user_info''')
@@ -214,10 +233,15 @@ async def getValidAccounts():
             # 如果需要验证，则进行验证
             if should_check:
                 try:
-                    flag = await check_cookie(type_val, file_path)
+                    if USE_MULTI_ACCOUNT_BROWSER:
+                        # 使用 multi-account-browser 验证
+                        flag = await check_cookie_multi_browser(type_val, file_path)
+                    else:
+                        # 使用传统方式验证
+                        flag = await check_cookie(type_val, file_path)
+                    
                     new_status = 1 if flag else 0
                     
-                    # 更新状态和检查时间
                     cursor.execute('''
                     UPDATE user_info 
                     SET status = ?, last_check_time = ?
@@ -225,17 +249,17 @@ async def getValidAccounts():
                     ''', (new_status, current_time.isoformat(), user_id))
                     conn.commit()
                     
-                    status = new_status  # 更新当前状态
-                    print(f"✅ 验证账号 {user_name}: {'正常' if new_status else '异常'}")
+                    status = new_status
+                    mode = "multi-account-browser" if USE_MULTI_ACCOUNT_BROWSER else "playwright"
+                    print(f"✅ 验证账号 {user_name} ({mode}): {'正常' if new_status else '异常'}")
                 except Exception as e:
                     print(f"❌ 验证账号 {user_name} 失败: {e}")
-                    # 验证失败时不更新状态，保持原状态
             
-            # 构建账号信息（保持原有的数据结构）
+            # 构建账号信息
             account = {
                 'id': user_id,
                 'type': type_val, 
-                'filePath': file_path,  # 保持原有字段名
+                'filePath': file_path,
                 'name': user_name,
                 'userName': user_name,
                 'platform': platform_map.get(type_val, '未知'),
@@ -243,14 +267,77 @@ async def getValidAccounts():
                 'avatar': '/default-avatar.png'
             }
             
-            # 返回所有账号（包括异常账号）
             accounts.append(account)
         
         return jsonify({
             "code": 200,
             "msg": "success", 
-            "data": accounts
+            "data": accounts,
+            "browserMode": "multi-account-browser" if USE_MULTI_ACCOUNT_BROWSER else "playwright"
         }), 200
+
+@app.route('/refreshMultiBrowserTabs', methods=['POST'])
+def refresh_multi_browser_tabs():
+    """刷新 multi-account-browser 的所有标签页"""
+    try:
+        if not USE_MULTI_ACCOUNT_BROWSER:
+            return jsonify({
+                "code": 400,
+                "msg": "当前未使用 multi-account-browser 模式",
+                "data": None
+            }), 400
+        
+        # 获取所有标签页
+        response = requests.get('http://localhost:3000/api/accounts', timeout=10)
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('success'):
+                tabs = result.get('data', [])
+                
+                # 刷新每个标签页
+                refreshed_count = 0
+                for tab in tabs:
+                    tab_id = tab.get('id')
+                    if tab_id:
+                        try:
+                            refresh_response = requests.post(
+                                'http://localhost:3000/api/account/refresh',
+                                json={"tabId": tab_id},
+                                timeout=5
+                            )
+                            if refresh_response.status_code == 200:
+                                refreshed_count += 1
+                        except:
+                            pass
+                
+                return jsonify({
+                    "code": 200,
+                    "msg": f"刷新完成: {refreshed_count}/{len(tabs)} 个标签页",
+                    "data": {
+                        "total": len(tabs),
+                        "refreshed": refreshed_count
+                    }
+                }), 200
+            else:
+                return jsonify({
+                    "code": 500,
+                    "msg": "获取标签页列表失败",
+                    "data": None
+                }), 500
+        else:
+            return jsonify({
+                "code": 500,
+                "msg": f"multi-account-browser API 响应错误: {response.status_code}",
+                "data": None
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"刷新标签页失败: {str(e)}",
+            "data": None
+        }), 500
 
 @app.route('/deleteFile', methods=['GET'])
 def delete_file():
@@ -355,18 +442,127 @@ def login():
     status_queue = Queue()
     active_queues[id] = status_queue
 
-    def on_close():
-        print(f"清理队列: {id}")
-        del active_queues[id]
-    # 启动异步任务线程
-    thread = threading.Thread(target=run_async_function, args=(type,id,status_queue), daemon=True)
+    # 选择使用哪种浏览器方式
+    if USE_MULTI_ACCOUNT_BROWSER:
+        thread = threading.Thread(target=run_multi_browser_login, args=(type, id, status_queue), daemon=True)
+    else:
+        thread = threading.Thread(target=run_async_function, args=(type, id, status_queue), daemon=True)
+    
     thread.start()
+    
     response = Response(sse_stream(status_queue,), mimetype='text/event-stream')
     response.headers['Cache-Control'] = 'no-cache'
-    response.headers['X-Accel-Buffering'] = 'no'  # 关键：禁用 Nginx 缓冲
+    response.headers['X-Accel-Buffering'] = 'no'
     response.headers['Content-Type'] = 'text/event-stream'
     response.headers['Connection'] = 'keep-alive'
     return response
+
+def run_multi_browser_login(type, id, status_queue):
+    """使用 multi-account-browser 的登录方式"""
+    try:
+        if not MULTI_BROWSER_LOGIN_AVAILABLE:
+            print("❌ multi-account-browser 登录模块不可用，回退到传统方式")
+            run_async_function(type, id, status_queue)
+            return
+            
+        match type:
+            case '1':  # 小红书
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(xiaohongshu_cookie_gen_multi_browser(id, status_queue))
+                loop.close()
+            case '2':  # 视频号
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(get_tencent_cookie_multi_browser(id, status_queue))
+                loop.close()
+            case '3':  # 抖音
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(douyin_cookie_gen_multi_browser(id, status_queue))
+                loop.close()
+            case '4':  # 快手
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(get_ks_cookie_multi_browser(id, status_queue))
+                loop.close()
+            case _:
+                status_queue.put("500")
+                print(f"❌ 不支持的平台类型: {type}")
+    except Exception as e:
+        print(f"❌ multi-account-browser 登录异常: {e}")
+        print("🔄 回退到传统登录方式")
+        run_async_function(type, id, status_queue)
+
+        
+# 添加新的API端点：检查 multi-account-browser 状态
+@app.route('/checkMultiBrowserStatus', methods=['GET'])
+def check_multi_browser_status():
+    """检查 multi-account-browser API 状态"""
+    try:
+        response = requests.get('http://localhost:3000/api/health', timeout=5)
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('success'):
+                return jsonify({
+                    "code": 200,
+                    "msg": "multi-account-browser API 正常",
+                    "data": {
+                        "connected": True,
+                        "api_info": result
+                    }
+                }), 200
+        
+        return jsonify({
+            "code": 500,
+            "msg": "multi-account-browser API 不可用",
+            "data": {"connected": False}
+        }), 500
+        
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": f"连接 multi-account-browser 失败: {str(e)}",
+            "data": {"connected": False}
+        }), 500
+
+# 添加新的API端点：切换浏览器模式
+@app.route('/setBrowserMode', methods=['POST'])
+def set_browser_mode():
+    """设置浏览器模式"""
+    global USE_MULTI_ACCOUNT_BROWSER
+    
+    data = request.get_json()
+    use_multi_browser = data.get('useMultiBrowser', True)
+    
+    USE_MULTI_ACCOUNT_BROWSER = use_multi_browser
+    
+    mode_name = "multi-account-browser" if use_multi_browser else "playwright"
+    
+    return jsonify({
+        "code": 200,
+        "msg": f"浏览器模式已切换到: {mode_name}",
+        "data": {
+            "mode": mode_name,
+            "useMultiBrowser": use_multi_browser
+        }
+    }), 200
+
+# 添加新的API端点：获取当前浏览器模式
+@app.route('/getBrowserMode', methods=['GET'])
+def get_browser_mode():
+    """获取当前浏览器模式"""
+    mode_name = "multi-account-browser" if USE_MULTI_ACCOUNT_BROWSER else "playwright"
+    
+    return jsonify({
+        "code": 200,
+        "msg": "success",
+        "data": {
+            "mode": mode_name,
+            "useMultiBrowser": USE_MULTI_ACCOUNT_BROWSER
+        }
+    }), 200
+
 
 @app.route('/postVideo', methods=['POST'])
 def postVideo():
@@ -387,29 +583,205 @@ def postVideo():
     videos_per_day = data.get('videosPerDay')
     daily_times = data.get('dailyTimes')
     start_days = data.get('startDays')
+    
     # 打印获取到的数据（仅作为示例）
     print("File List:", file_list)
     print("Account List:", account_list)
-    match type:
-        case 1:
-            post_video_xhs(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                               start_days)
-        case 2:
-            post_video_tencent(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                               start_days)
-        case 3:
-            post_video_DouYin(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                      start_days)
-        case 4:
-            post_video_ks(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                      start_days)
-    # 返回响应给客户端
-    return jsonify(
-        {
+    print(f"🔧 Browser Mode: {'multi-account-browser' if USE_MULTI_ACCOUNT_BROWSER else 'playwright'}")
+    
+    try:
+        if USE_MULTI_ACCOUNT_BROWSER and MULTI_BROWSER_POST_AVAILABLE:
+            # 使用 multi-account-browser 智能发布
+            match type:
+                case 1:
+                    post_video_xhs_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                case 2:
+                    post_video_tencent_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                case 3:
+                    post_video_DouYin_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                case 4:
+                    post_video_ks_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+        else:
+            # 使用传统方式发布
+            match type:
+                case 1:
+                    post_video_xhs(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                case 2:
+                    post_video_tencent(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                case 3:
+                    post_video_DouYin(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                case 4:
+                    post_video_ks(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+        
+        # 返回响应给客户端
+        return jsonify({
             "code": 200,
-            "msg": None,
-            "data": None
+            "msg": "发布任务已提交",
+            "data": {
+                "browserMode": "multi-account-browser" if USE_MULTI_ACCOUNT_BROWSER else "playwright",
+                "moduleLoaded": MULTI_BROWSER_POST_AVAILABLE if USE_MULTI_ACCOUNT_BROWSER else True
+            }
         }), 200
+        
+    except Exception as e:
+        print(f"❌ 发布失败: {e}")
+        return jsonify({
+            "code": 500,
+            "msg": f"发布失败: {str(e)}",
+            "data": None
+        }), 500
+
+@app.route('/postVideoBatch', methods=['POST'])
+def postVideoBatch():
+    """批量发布视频 - 智能选择浏览器模式"""
+    try:
+        data_list = request.get_json()
+
+        if not isinstance(data_list, list):
+            return jsonify({
+                "code": 400, 
+                "msg": "请求数据应为数组格式", 
+                "data": None
+            }), 400
+
+        print(f"🚀 接收到 {len(data_list)} 个批量发布任务")
+        print(f"🔧 当前浏览器模式: {'multi-account-browser' if USE_MULTI_ACCOUNT_BROWSER else 'playwright'}")
+        
+        if USE_MULTI_ACCOUNT_BROWSER:
+            # 使用 multi-account-browser 处理（当前仅支持抖音）
+            print("🌟 使用 multi-account-browser 处理批量发布")
+            
+            success_count = 0
+            total_count = 0
+            results = []
+            
+            for data in data_list:
+                file_list = data.get('fileList', [])
+                account_list = data.get('accountList', [])
+                type_val = data.get('type')
+                title = data.get('title')
+                tags = data.get('tags')
+                
+                total_count += len(file_list) * len(account_list)
+                
+                # 目前只支持抖音使用 multi-account-browser
+                if type_val == 3:  # 抖音
+                    try:
+                        post_video_DouYin_smart(title, file_list, tags, account_list)
+                        success_count += len(file_list) * len(account_list)
+                        results.append({
+                            "platform": "抖音",
+                            "title": title,
+                            "success": True,
+                            "message": "使用 multi-account-browser 发布成功"
+                        })
+                    except Exception as e:
+                        results.append({
+                            "platform": "抖音", 
+                            "title": title,
+                            "success": False,
+                            "error": str(e)
+                        })
+                else:
+                    # 其他平台暂时使用传统方式
+                    platform_names = {1: "小红书", 2: "视频号", 4: "快手"}
+                    platform_name = platform_names.get(type_val, "未知平台")
+                    
+                    try:
+                        category = data.get('category')
+                        enableTimer = data.get('enableTimer')
+                        if category == 0:
+                            category = None
+
+                        videos_per_day = data.get('videosPerDay')
+                        daily_times = data.get('dailyTimes')
+                        start_days = data.get('startDays')
+                        
+                        match type_val:
+                            case 1:
+                                post_video_xhs_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                            case 2:
+                                post_video_tencent_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                            case 4:
+                                post_video_ks_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                        
+                        success_count += len(file_list) * len(account_list)
+                        results.append({
+                            "platform": platform_name,
+                            "title": title, 
+                            "success": True,
+                            "message": "使用传统方式发布成功"
+                        })
+                    except Exception as e:
+                        results.append({
+                            "platform": platform_name,
+                            "title": title,
+                            "success": False, 
+                            "error": str(e)
+                        })
+            
+            return jsonify({
+                "code": 200,
+                "msg": f"批量发布完成: {success_count}/{total_count} 成功",
+                "data": {
+                    "results": results,
+                    "total": total_count,
+                    "success": success_count,
+                    "failed": total_count - success_count,
+                    "browserMode": "mixed (multi-account-browser + playwright)"
+                }
+            }), 200
+            
+        else:
+            # 使用传统方式处理
+            print("🔧 使用传统方式处理批量发布")
+            
+            for data in data_list:
+                file_list = data.get('fileList', [])
+                account_list = data.get('accountList', [])
+                type_val = data.get('type')
+                title = data.get('title')
+                tags = data.get('tags')
+                category = data.get('category')
+                enableTimer = data.get('enableTimer')
+                
+                if category == 0:
+                    category = None
+
+                videos_per_day = data.get('videosPerDay')
+                daily_times = data.get('dailyTimes')
+                start_days = data.get('startDays')
+                
+                print("File List:", file_list)
+                print("Account List:", account_list)
+                
+                match type_val:
+                    case 1:
+                        post_video_xhs(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                    case 2:
+                        post_video_tencent(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                    case 3:
+                        post_video_DouYin(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                    case 4:
+                        post_video_ks(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+            
+            return jsonify({
+                "code": 200,
+                "msg": "传统方式批量发布完成",
+                "data": {
+                    "total": len(data_list),
+                    "browserMode": "playwright"
+                }
+            }), 200
+
+    except Exception as e:
+        print(f"❌ 批量发布失败: {e}")
+        return jsonify({
+            "code": 500,
+            "msg": f"批量发布失败: {str(e)}",
+            "data": None
+        }), 500
+
 
 
 @app.route('/updateUserinfo', methods=['POST'])
@@ -449,49 +821,6 @@ def updateUserinfo():
             "data": None
         }), 500
 
-@app.route('/postVideoBatch', methods=['POST'])
-def postVideoBatch():
-    data_list = request.get_json()
-
-    if not isinstance(data_list, list):
-        return jsonify({"error": "Expected a JSON array"}), 400
-    for data in data_list:
-        # 从JSON数据中提取fileList和accountList
-        file_list = data.get('fileList', [])
-        account_list = data.get('accountList', [])
-        type = data.get('type')
-        title = data.get('title')
-        tags = data.get('tags')
-        category = data.get('category')
-        enableTimer = data.get('enableTimer')
-        if category == 0:
-            category = None
-
-        videos_per_day = data.get('videosPerDay')
-        daily_times = data.get('dailyTimes')
-        start_days = data.get('startDays')
-        # 打印获取到的数据（仅作为示例）
-        print("File List:", file_list)
-        print("Account List:", account_list)
-        match type:
-            case 1:
-                return
-            case 2:
-                post_video_tencent(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                                   start_days)
-            case 3:
-                post_video_DouYin(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                          start_days)
-            case 4:
-                post_video_ks(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                          start_days)
-    # 返回响应给客户端
-    return jsonify(
-        {
-            "code": 200,
-            "msg": None,
-            "data": None
-        }), 200
 
 # 包装函数：在线程中运行异步函数
 def run_async_function(type,id,status_queue):

@@ -1,38 +1,34 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
+import path from 'path'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  base: './',
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-    },
-  },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        // 移除自动导入，改用@use语法
-      }
+      '@': path.resolve(__dirname, 'src')
     }
   },
-  server: {
-    port: 5173,
-    open: true
-  },
   build: {
-    outDir: 'dist',
-    sourcemap: false,
-    chunkSizeWarningLimit: 1600,
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks: {
-          vue: ['vue', 'vue-router', 'pinia'],
-          elementPlus: ['element-plus'],
-          utils: ['axios']
-        }
+          vendor: ['vue'],
+          elementPlus: ['element-plus']
+        },
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js'
       }
-    }
+    },
+    reportCompressedSize: true,
+    chunkSizeWarningLimit: 1000,
+    outDir: 'dist',
+    assetsDir: 'assets'
+  },
+  define: {
+    __VUE_PROD_DEVTOOLS__: false,
   }
 })

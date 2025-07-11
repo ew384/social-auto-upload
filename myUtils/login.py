@@ -8,8 +8,200 @@ from utils.base_social_media import set_init_script
 import uuid
 from pathlib import Path
 from conf import BASE_DIR
+from utils.browser_adapter import MultiAccountBrowserAdapter
 
-# 抖音登录
+async def douyin_cookie_gen_multi_browser(id, status_queue):
+    """使用 multi-account-browser 的抖音登录函数"""
+    adapter = MultiAccountBrowserAdapter()
+    
+    try:
+        status_queue.put(f"data:开始创建抖音登录标签页...")
+        
+        # 1. 创建抖音登录标签页
+        tab_id = await adapter.create_account_tab(
+            platform="douyin",
+            account_name=id,
+            initial_url="https://creator.douyin.com/"
+        )
+        
+        status_queue.put(f"data:标签页创建成功，等待用户登录...")
+        
+        # 2. 等待用户手动登录
+        login_success = await adapter.wait_for_login_completion(tab_id, id, timeout=200)
+        
+        if not login_success:
+            status_queue.put("500")
+            return
+        
+        # 3. 保存 cookies
+        uuid_v1 = uuid.uuid1()
+        cookie_file = Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json")
+        
+        if await adapter.save_cookies(tab_id, str(cookie_file)):
+            # 4. 保存到数据库
+            with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO user_info (type, filePath, userName, status)
+                    VALUES (?, ?, ?, ?)
+                ''', (3, f"{uuid_v1}.json", id, 1))
+                conn.commit()
+                print("✅ 用户信息已保存到数据库")
+            
+            status_queue.put("200")
+            print(f"✅ 抖音账号 {id} 登录成功，cookies已保存")
+        else:
+            status_queue.put("500")
+            print(f"❌ 保存cookies失败")
+            
+    except Exception as e:
+        print(f"❌ 抖音登录失败: {e}")
+        status_queue.put("500")
+
+async def xiaohongshu_cookie_gen_multi_browser(id, status_queue):
+    """使用 multi-account-browser 的小红书登录函数"""
+    adapter = MultiAccountBrowserAdapter()
+    
+    try:
+        status_queue.put(f"data:开始创建小红书登录标签页...")
+        
+        # 1. 创建小红书登录标签页
+        tab_id = await adapter.create_account_tab(
+            platform="xiaohongshu",
+            account_name=id,
+            initial_url="https://creator.xiaohongshu.com/"
+        )
+        
+        status_queue.put(f"data:标签页创建成功，等待用户登录...")
+        
+        # 2. 等待用户手动登录
+        login_success = await adapter.wait_for_login_completion(tab_id, id, timeout=200)
+        
+        if not login_success:
+            status_queue.put("500")
+            return
+        
+        # 3. 保存 cookies
+        uuid_v1 = uuid.uuid1()
+        cookie_file = Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json")
+        
+        if await adapter.save_cookies(tab_id, str(cookie_file)):
+            # 4. 保存到数据库
+            with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO user_info (type, filePath, userName, status)
+                    VALUES (?, ?, ?, ?)
+                ''', (1, f"{uuid_v1}.json", id, 1))
+                conn.commit()
+                print("✅ 用户信息已保存到数据库")
+            
+            status_queue.put("200")
+            print(f"✅ 小红书账号 {id} 登录成功，cookies已保存")
+        else:
+            status_queue.put("500")
+            print(f"❌ 保存cookies失败")
+            
+    except Exception as e:
+        print(f"❌ 小红书登录失败: {e}")
+        status_queue.put("500")
+
+async def get_tencent_cookie_multi_browser(id, status_queue):
+    """使用 multi-account-browser 的视频号登录函数"""
+    adapter = MultiAccountBrowserAdapter()
+    
+    try:
+        status_queue.put(f"data:开始创建视频号登录标签页...")
+        
+        # 1. 创建视频号登录标签页
+        tab_id = await adapter.create_account_tab(
+            platform="weixin",
+            account_name=id,
+            initial_url="https://channels.weixin.qq.com"
+        )
+        
+        status_queue.put(f"data:标签页创建成功，等待用户登录...")
+        
+        # 2. 等待用户手动登录
+        login_success = await adapter.wait_for_login_completion(tab_id, id, timeout=200)
+        
+        if not login_success:
+            status_queue.put("500")
+            return
+        
+        # 3. 保存 cookies
+        uuid_v1 = uuid.uuid1()
+        cookie_file = Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json")
+        
+        if await adapter.save_cookies(tab_id, str(cookie_file)):
+            # 4. 保存到数据库
+            with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO user_info (type, filePath, userName, status)
+                    VALUES (?, ?, ?, ?)
+                ''', (2, f"{uuid_v1}.json", id, 1))
+                conn.commit()
+                print("✅ 用户信息已保存到数据库")
+            
+            status_queue.put("200")
+            print(f"✅ 视频号账号 {id} 登录成功，cookies已保存")
+        else:
+            status_queue.put("500")
+            print(f"❌ 保存cookies失败")
+            
+    except Exception as e:
+        print(f"❌ 视频号登录失败: {e}")
+        status_queue.put("500")
+
+async def get_ks_cookie_multi_browser(id, status_queue):
+    """使用 multi-account-browser 的快手登录函数"""
+    adapter = MultiAccountBrowserAdapter()
+    
+    try:
+        status_queue.put(f"data:开始创建快手登录标签页...")
+        
+        # 1. 创建快手登录标签页
+        tab_id = await adapter.create_account_tab(
+            platform="kuaishou",
+            account_name=id,
+            initial_url="https://cp.kuaishou.com"
+        )
+        
+        status_queue.put(f"data:标签页创建成功，等待用户登录...")
+        
+        # 2. 等待用户手动登录
+        login_success = await adapter.wait_for_login_completion(tab_id, id, timeout=200)
+        
+        if not login_success:
+            status_queue.put("500")
+            return
+        
+        # 3. 保存 cookies
+        uuid_v1 = uuid.uuid1()
+        cookie_file = Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json")
+        
+        if await adapter.save_cookies(tab_id, str(cookie_file)):
+            # 4. 保存到数据库
+            with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO user_info (type, filePath, userName, status)
+                    VALUES (?, ?, ?, ?)
+                ''', (4, f"{uuid_v1}.json", id, 1))
+                conn.commit()
+                print("✅ 用户信息已保存到数据库")
+            
+            status_queue.put("200")
+            print(f"✅ 快手账号 {id} 登录成功，cookies已保存")
+        else:
+            status_queue.put("500")
+            print(f"❌ 保存cookies失败")
+            
+    except Exception as e:
+        print(f"❌ 快手登录失败: {e}")
+        status_queue.put("500")
+        
 async def douyin_cookie_gen(id,status_queue):
     url_changed_event = asyncio.Event()
     async def on_url_change():

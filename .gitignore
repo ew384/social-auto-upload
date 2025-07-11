@@ -190,5 +190,10 @@ dist
 backend-dist
 final-dist
 sau_frontend/dist-electron/
+sau_frontend/dist/
 sau_frontend/resources/
-final-dist-optimized
+sau_frontend/node_modules/
+sau_frontend/build/
+final-dist-fixed
+final-dist-working
+final-dist-test
