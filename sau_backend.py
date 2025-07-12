@@ -16,25 +16,87 @@ from utils.video_utils import is_video_file
 from datetime import datetime
 import requests
 
-from myUtils.login import (
-    douyin_cookie_gen_multi_browser, 
-    xiaohongshu_cookie_gen_multi_browser,
-    get_tencent_cookie_multi_browser,
-    get_ks_cookie_multi_browser
-)
+print("🔄 正在加载 multi-account-browser 集成模块...")
 
-from myUtils.postVideo import (
-    post_video_DouYin_smart, 
-    post_video_tencent_smart, 
-    post_video_ks_smart, 
-    post_video_xhs_smart,
-    set_browser_mode,
-    get_browser_mode,
-    batch_publish_videos_multi_browser
-)
-from myUtils.auth import check_cookie_multi_browser
+# 全局配置变量
+USE_MULTI_ACCOUNT_BROWSER = False  # 默认关闭，通过API动态开启
 
-USE_MULTI_ACCOUNT_BROWSER = True  # 设置为 True 启用新方式
+# 模块可用性标志
+MULTI_BROWSER_LOGIN_AVAILABLE = False
+MULTI_BROWSER_POST_AVAILABLE = False  
+MULTI_BROWSER_AUTH_AVAILABLE = False
+
+# 尝试加载 multi-account-browser 登录模块
+try:
+    from myUtils.login import (
+        douyin_cookie_gen_multi_browser, 
+        xiaohongshu_cookie_gen_multi_browser,
+        get_tencent_cookie_multi_browser,
+        get_ks_cookie_multi_browser
+    )
+    MULTI_BROWSER_LOGIN_AVAILABLE = True
+    print("✅ multi-account-browser 登录模块加载成功")
+except ImportError as e:
+    print(f"⚠️ multi-account-browser 登录模块未找到，将使用传统方式: {e}")
+    MULTI_BROWSER_LOGIN_AVAILABLE = False
+except Exception as e:
+    print(f"❌ multi-account-browser 登录模块加载失败: {e}")
+    MULTI_BROWSER_LOGIN_AVAILABLE = False
+
+# 尝试加载 multi-account-browser 发布模块
+try:
+    from myUtils.postVideo import (
+        post_video_DouYin_smart, 
+        post_video_tencent_smart, 
+        post_video_ks_smart, 
+        post_video_xhs_smart,
+        set_browser_mode,
+        get_browser_mode
+    )
+    MULTI_BROWSER_POST_AVAILABLE = True
+    print("✅ multi-account-browser 发布模块加载成功")
+except ImportError as e:
+    print(f"⚠️ multi-account-browser 发布模块未找到，将使用传统方式: {e}")
+    MULTI_BROWSER_POST_AVAILABLE = False
+    # 确保传统函数可用
+    try:
+        from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs
+        print("✅ 传统发布模块加载成功")
+    except ImportError as fallback_e:
+        print(f"❌ 传统发布模块也无法加载: {fallback_e}")
+except Exception as e:
+    print(f"❌ multi-account-browser 发布模块加载失败: {e}")
+    MULTI_BROWSER_POST_AVAILABLE = False
+
+# 尝试加载 multi-account-browser 验证模块
+try:
+    from myUtils.auth import check_cookie_multi_browser
+    MULTI_BROWSER_AUTH_AVAILABLE = True
+    print("✅ multi-account-browser 验证模块加载成功")
+except ImportError as e:
+    print(f"⚠️ multi-account-browser 验证模块未找到，将使用传统方式: {e}")
+    MULTI_BROWSER_AUTH_AVAILABLE = False
+except Exception as e:
+    print(f"❌ multi-account-browser 验证模块加载失败: {e}")
+    MULTI_BROWSER_AUTH_AVAILABLE = False
+
+# 打印模块加载状态总结
+print(f"📊 multi-account-browser 模块状态:")
+print(f"   登录模块: {'✅ 可用' if MULTI_BROWSER_LOGIN_AVAILABLE else '❌ 不可用'}")
+print(f"   发布模块: {'✅ 可用' if MULTI_BROWSER_POST_AVAILABLE else '❌ 不可用'}")
+print(f"   验证模块: {'✅ 可用' if MULTI_BROWSER_AUTH_AVAILABLE else '❌ 不可用'}")
+
+# 智能设置默认模式
+if MULTI_BROWSER_LOGIN_AVAILABLE and MULTI_BROWSER_POST_AVAILABLE:
+    print("🌟 multi-account-browser 功能完整，可以启用新模式")
+    USE_MULTI_ACCOUNT_BROWSER = True  # 暂时保持手动开启
+else:
+    print("🔧 multi-account-browser 功能不完整，保持传统模式")
+    USE_MULTI_ACCOUNT_BROWSER = False
+
+print(f"🔧 当前浏览器模式: {'multi-account-browser' if USE_MULTI_ACCOUNT_BROWSER else 'playwright'}")
+print("=" * 60)
+
 active_queues = {}
 app = Flask(__name__)
 
@@ -460,7 +522,7 @@ def login():
 def run_multi_browser_login(type, id, status_queue):
     """使用 multi-account-browser 的登录方式"""
     try:
-        if not MULTI_BROWSER_LOGIN_AVAILABLE:
+        if not USE_MULTI_ACCOUNT_BROWSER:
             print("❌ multi-account-browser 登录模块不可用，回退到传统方式")
             run_async_function(type, id, status_queue)
             return

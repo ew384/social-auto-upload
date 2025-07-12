@@ -169,6 +169,8 @@ conf.py
 # 账号文件
 cookies
 
+#
+*.png
 # Frontend
 .vite/
 dist/
