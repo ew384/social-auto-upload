@@ -268,6 +268,31 @@ class MultiAccountBrowserAdapter:
         except:
             return False
     
+    async def upload_file_fallback(self, tab_id: str, file_selector: str, file_path: str) -> bool:
+        """文件上传的降级方法"""
+        print(f"📁 准备上传文件（传统方式）: {file_path}")
+        
+        trigger_script = f"""
+        (function() {{
+            const fileInput = document.querySelector('{file_selector}');
+            if (fileInput) {{
+                fileInput.click();
+                return true;
+            }}
+            return false;
+        }})()
+        """
+        
+        try:
+            result = await self.execute_script(tab_id, trigger_script)
+            if result:
+                print(f"🔔 文件选择器已触发，请手动选择文件: {Path(file_path).name}")
+                return True
+            return False
+        except Exception as e:
+            print(f"❌ 传统文件上传失败: {e}")
+            return False
+
     async def save_cookies(self, tab_id: str, cookie_file: str) -> bool:
         """保存 cookies，替代 context.storage_state()"""
         result = self._make_request('POST', '/account/save-cookies', {
