@@ -46,7 +46,109 @@ class MultiAccountBrowserAdapter:
         print(f"📋 账号标签页映射已保存: {account_name} -> {tab_id}")
         
         return tab_id
-    
+
+    async def set_input_files(self, tab_id: str, selector: str, file_path: str) -> bool:
+        """通用的 setInputFiles 方法 - 不涉及平台特定逻辑"""
+        if not Path(file_path).exists():
+            print(f"❌ 文件不存在: {file_path}")
+            return False
+
+        file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
+        print(f"📁 设置输入文件: {Path(file_path).name} ({file_size_mb:.1f}MB)")
+        
+        try:
+            # 使用通用的 API 端点
+            result = self._make_request('POST', '/account/set-input-files', {
+                "tabId": tab_id,
+                "selector": selector,  # 选择器由调用方提供
+                "filePath": str(Path(file_path).absolute())
+            })
+            
+            if result.get("success"):
+                print(f"✅ 文件路径设置成功: {Path(file_path).name}")
+                return True
+            else:
+                error_msg = result.get('error', 'Unknown error')
+                print(f"❌ 文件设置失败: {error_msg}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 文件设置API异常: {e}")
+            return False
+
+    async def check_element_exists(self, tab_id: str, selector: str) -> bool:
+        """检查元素是否存在"""
+        try:
+            script = f"!!document.querySelector('{selector}')"
+            result = await self.execute_script(tab_id, script)
+            return bool(result)
+        except:
+            return False
+
+    async def find_file_inputs(self, tab_id: str) -> List[str]:
+        """查找页面中所有的文件输入框"""
+        try:
+            script = """
+            (function() {
+                const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+                return inputs.map((input, index) => {
+                    const id = input.id || `file-input-${index}`;
+                    const classes = input.className;
+                    const accept = input.accept || '';
+                    
+                    return {
+                        selector: input.id ? `#${input.id}` : `input[type="file"]:nth-of-type(${index + 1})`,
+                        id: id,
+                        classes: classes,
+                        accept: accept,
+                        visible: input.offsetParent !== null
+                    };
+                });
+            })()
+            """
+            
+            result = await self.execute_script(tab_id, script)
+            return result if result else []
+            
+        except Exception as e:
+            print(f"❌ 查找文件输入框失败: {e}")
+            return []
+        
+    async def upload_file_fallback(self, tab_id: str, file_selector: str, file_path: str) -> bool:
+        """文件上传的降级方法 - 触发文件选择器"""
+        print(f"📁 准备上传文件（降级方式）: {file_path}")
+        
+        trigger_script = f"""
+        (function() {{
+            const fileInput = document.querySelector('{file_selector}');
+            if (fileInput) {{
+                fileInput.click();
+                return true;
+            }}
+            return false;
+        }})()
+        """
+        
+        try:
+            result = await self.execute_script(tab_id, trigger_script)
+            if result:
+                print(f"🔔 文件选择器已触发，请手动选择文件: {Path(file_path).name}")
+                return True
+            return False
+        except Exception as e:
+            print(f"❌ 降级文件上传失败: {e}")
+            return False
+
+    async def is_tab_valid(self, tab_id: str) -> bool:
+        """检查标签页是否仍然有效"""
+        try:
+            # 尝试执行一个简单的脚本来验证标签页
+            result = await self.execute_script(tab_id, "window.location.href")
+            return bool(result)
+        except:
+            return False
+
+
     def get_all_account_tabs(self) -> Dict[str, str]:
         """获取所有账号的标签页映射"""
         return self.account_tabs.copy()
@@ -70,18 +172,25 @@ class MultiAccountBrowserAdapter:
             return False
 
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
-        """统一的API请求方法"""
+        """统一的API请求方法 - 增加错误处理"""
         url = f"{self.api_base_url}{endpoint}"
         
         try:
+            # 对于大文件相关的请求，使用更长的超时时间
+            timeout = 60 if '/set-file' in endpoint else 30
+            
             if method.upper() == 'GET':
-                response = self.session.get(url, timeout=30)
+                response = self.session.get(url, timeout=timeout)
             else:
-                response = self.session.post(url, json=data, timeout=30)
+                response = self.session.post(url, json=data, timeout=timeout)
             
             response.raise_for_status()
             return response.json()
             
+        except requests.exceptions.ConnectionError as e:
+            raise Exception(f"连接失败 {method} {endpoint}: 请确保 multi-account-browser 正在运行")
+        except requests.exceptions.Timeout as e:
+            raise Exception(f"请求超时 {method} {endpoint}: {e}")
         except requests.exceptions.RequestException as e:
             raise Exception(f"API请求失败 {method} {endpoint}: {e}")
     
@@ -212,43 +321,6 @@ class MultiAccountBrowserAdapter:
         except:
             return False
     
-    async def set_file_input_automatic(self, tab_id: str, selector: str, file_path: str) -> bool:
-        """完全自动化的文件上传 - 使用 multi-account-browser 的文件设置API"""
-        if not Path(file_path).exists():
-            print(f"❌ 文件不存在: {file_path}")
-            return False
-
-        file_size = Path(file_path).stat().st_size / (1024 * 1024)  # MB
-        print(f"📁 自动设置文件: {Path(file_path).name} ({file_size:.1f}MB)")
-        
-        try:
-            # 使用新的文件设置 API
-            result = self._make_request('POST', '/account/set-file', {
-                "tabId": tab_id,
-                "selector": selector,
-                "filePath": str(Path(file_path).absolute())
-            })
-            
-            if result.get("success"):
-                file_info = result.get('data', {})
-                method = file_info.get('method', 'Unknown')
-                file_name = file_info.get('fileName', 'Unknown')
-                
-                if file_info.get('success'):
-                    print(f"✅ 文件自动设置成功 ({method}): {file_name}")
-                    return True
-                else:
-                    print(f"⚠️ 文件设置完成但可能需要验证 ({method}): {file_name}")
-                    return True  # 有些情况下虽然返回部分成功，但实际可用
-            else:
-                error_msg = result.get('error', 'Unknown error')
-                print(f"❌ 文件设置失败: {error_msg}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ 文件上传API异常: {e}")
-            return False
-
     async def trigger_file_selector(self, tab_id: str, selector: str) -> bool:
         """触发文件选择器（备用方案）"""
         trigger_script = f"""
@@ -268,30 +340,6 @@ class MultiAccountBrowserAdapter:
         except:
             return False
     
-    async def upload_file_fallback(self, tab_id: str, file_selector: str, file_path: str) -> bool:
-        """文件上传的降级方法"""
-        print(f"📁 准备上传文件（传统方式）: {file_path}")
-        
-        trigger_script = f"""
-        (function() {{
-            const fileInput = document.querySelector('{file_selector}');
-            if (fileInput) {{
-                fileInput.click();
-                return true;
-            }}
-            return false;
-        }})()
-        """
-        
-        try:
-            result = await self.execute_script(tab_id, trigger_script)
-            if result:
-                print(f"🔔 文件选择器已触发，请手动选择文件: {Path(file_path).name}")
-                return True
-            return False
-        except Exception as e:
-            print(f"❌ 传统文件上传失败: {e}")
-            return False
 
     async def save_cookies(self, tab_id: str, cookie_file: str) -> bool:
         """保存 cookies，替代 context.storage_state()"""

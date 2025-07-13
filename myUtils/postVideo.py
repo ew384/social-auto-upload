@@ -76,15 +76,14 @@ async def post_video_DouYin_smart(title, files, tags, account_file, category=Non
 async def post_video_tencent_smart(title, files, tags, account_file, category=TencentZoneTypes.LIFESTYLE.value, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
     """智能选择视频号发布方式"""
     if USE_MULTI_ACCOUNT_BROWSER:
-        print("🌟 使用 multi-account-browser 发布视频号")
-        await post_video_tencent_multi_browser(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
+        print("🌟 使用 multi-account-browser 账号管理 + 原来的上传方案")
+        await post_video_tencent_with_multi_browser(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
     else:
         print("🔧 使用传统 playwright 发布视频号")
         post_video_tencent(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
 
-async def post_video_tencent_multi_browser(title, files, tags, account_file, category=TencentZoneTypes.LIFESTYLE.value, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
-    """使用 multi-account-browser 发布视频号视频 - 每账号一标签页"""
-    print(f"🚀 使用 multi-account-browser 发布视频号视频")
+async def post_video_tencent_with_multi_browser(title, files, tags, account_file, category=TencentZoneTypes.LIFESTYLE.value, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
+    """使用 multi-account-browser 的视频号发布"""
     
     from uploader.tencent_uploader.main_multi_browser import TencentVideoMultiBrowser
     
@@ -104,7 +103,7 @@ async def post_video_tencent_multi_browser(title, files, tags, account_file, cat
         for account in account_files:
             print(f"👤 使用账号: {account.name}")
             
-            # 每个账号都有自己的专属标签页
+            # 使用简化的 multi-browser 上传器
             uploader = TencentVideoMultiBrowser(
                 title=title, 
                 file_path=str(video_file), 
@@ -115,20 +114,19 @@ async def post_video_tencent_multi_browser(title, files, tags, account_file, cat
             )
             
             try:
-                await uploader.main()  # 这里需要 await
-                print(f"✅ 账号 {account.stem} 发布视频成功: {title}")
+                await uploader.main()  # 内部会调用原来的 main.py
+                print(f"✅ 账号 {account.stem} 发布成功: {title}")
                 
             except Exception as e:
-                print(f"❌ 账号 {account.stem} 发布视频失败: {e}")
+                print(f"❌ 账号 {account.stem} 发布失败: {e}")
                 
             # 短暂间隔，避免请求过于频繁
-            await asyncio.sleep(2)  # 这里需要 await
+            await asyncio.sleep(2)
         
         # 一个视频发布到所有账号后，稍作间隔
         if index < len(video_files) - 1:
             print(f"⏳ 视频 {video_file.name} 发布完成，等待处理下一个视频...")
-            await asyncio.sleep(5)  # 这里需要 await
-
+            await asyncio.sleep(5)
 # 新增：查看所有账号标签页状态
 async def show_all_account_tabs():
     """显示所有账号的标签页状态"""
