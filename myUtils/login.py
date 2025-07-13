@@ -107,20 +107,35 @@ async def xiaohongshu_cookie_gen_multi_browser(id, status_queue):
         status_queue.put("500")
 
 async def get_tencent_cookie_multi_browser(id, status_queue):
-    """使用 multi-account-browser 的视频号登录函数"""
+    """使用 multi-account-browser 的视频号登录函数 - 使用通用方法"""
     adapter = MultiAccountBrowserAdapter()
+    
+    # 设置数据库路径
+    from conf import BASE_DIR
+    adapter.set_database_path(str(BASE_DIR / "db" / "database.db"))
     
     try:
         status_queue.put(f"data:开始创建视频号登录标签页...")
         
-        # 1. 创建视频号登录标签页
+        # 生成临时的cookie文件名（用于预先生成账号标识符）
+        uuid_v1 = uuid.uuid1()
+        temp_cookie_file = str(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json")
+        
+        # 生成账号标识符和显示名
+        tab_identifier = adapter.generate_tab_identifier("weixin", temp_cookie_file)
+        display_name = adapter.generate_display_name("weixin", temp_cookie_file)
+        
+        status_queue.put(f"data:标签页标识符: {tab_identifier}")
+        status_queue.put(f"data:显示名称: {display_name}")
+        
+        # 1. 创建视频号登录标签页（使用UUID标识符）
         tab_id = await adapter.create_account_tab(
             platform="weixin",
-            account_name=id,
-            initial_url="https://channels.weixin.qq.com"
+            account_name=tab_identifier,  # 后端使用UUID标识符
+            initial_url="https://channels.weixin.qq.com/"
         )
         
-        status_queue.put(f"data:标签页创建成功，等待用户登录...")
+        status_queue.put(f"data:标签页创建成功（ID: {tab_id}），等待用户登录...")
         
         # 2. 等待用户手动登录
         login_success = await adapter.wait_for_login_completion(tab_id, id, timeout=200)
@@ -129,8 +144,7 @@ async def get_tencent_cookie_multi_browser(id, status_queue):
             status_queue.put("500")
             return
         
-        # 3. 保存 cookies
-        uuid_v1 = uuid.uuid1()
+        # 3. 保存 cookies（使用实际的文件路径）
         cookie_file = Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json")
         
         if await adapter.save_cookies(tab_id, str(cookie_file)):
@@ -144,6 +158,11 @@ async def get_tencent_cookie_multi_browser(id, status_queue):
                 conn.commit()
                 print("✅ 用户信息已保存到数据库")
             
+            # 5. 更新适配器的账号映射（重要！）
+            account_key = str(cookie_file.absolute())
+            adapter.account_tabs[account_key] = tab_id
+            print(f"📋 登录完成后更新账号映射: {display_name} -> {tab_id}")
+            
             status_queue.put("200")
             print(f"✅ 视频号账号 {id} 登录成功，cookies已保存")
         else:
@@ -153,6 +172,7 @@ async def get_tencent_cookie_multi_browser(id, status_queue):
     except Exception as e:
         print(f"❌ 视频号登录失败: {e}")
         status_queue.put("500")
+
 
 async def get_ks_cookie_multi_browser(id, status_queue):
     """使用 multi-account-browser 的快手登录函数"""
