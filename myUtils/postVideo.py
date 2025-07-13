@@ -12,6 +12,12 @@ from utils.files_times import generate_schedule_time_next_day
 
 # 全局配置，控制是否使用 multi-account-browser
 USE_MULTI_ACCOUNT_BROWSER = True
+try:
+    from uploader.tencent_uploader.main_multi_browser import TencentVideoMultiBrowser
+    TENCENT_MULTI_BROWSER_AVAILABLE = True
+except ImportError:
+    TENCENT_MULTI_BROWSER_AVAILABLE = False
+    print("⚠️ 视频号 multi-account-browser 模块未找到")
 
 def set_browser_mode(use_multi_browser: bool):
     """设置浏览器模式"""
@@ -23,7 +29,7 @@ def get_browser_mode() -> bool:
     """获取当前浏览器模式"""
     return USE_MULTI_ACCOUNT_BROWSER
 
-def post_video_douyin_multi_browser(title, files, tags, account_file, category=None, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
+async def post_video_douyin_multi_browser(title, files, tags, account_file, category=None, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
     """使用 multi-account-browser 发布抖音视频"""
     print(f"🚀 使用 multi-account-browser 发布抖音视频")
     
@@ -58,38 +64,113 @@ def post_video_douyin_multi_browser(title, files, tags, account_file, category=N
             except Exception as e:
                 print(f"❌ 抖音视频发布失败: {e}")
 
-def post_video_DouYin_smart(title, files, tags, account_file, category=None, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
+async def post_video_DouYin_smart(title, files, tags, account_file, category=None, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
     """智能选择抖音发布方式"""
     if USE_MULTI_ACCOUNT_BROWSER:
         print("🌟 使用 multi-account-browser 发布抖音视频")
-        post_video_douyin_multi_browser(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
+        await post_video_douyin_multi_browser(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
     else:
         print("🔧 使用传统 playwright 发布抖音视频")
         post_video_DouYin(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
 
-def post_video_tencent_smart(title, files, tags, account_file, category=TencentZoneTypes.LIFESTYLE.value, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
+async def post_video_tencent_smart(title, files, tags, account_file, category=TencentZoneTypes.LIFESTYLE.value, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
     """智能选择视频号发布方式"""
     if USE_MULTI_ACCOUNT_BROWSER:
-        print("🌟 视频号暂时使用传统方式，multi-account-browser 支持开发中...")
-        post_video_tencent(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
+        print("🌟 使用 multi-account-browser 发布视频号")
+        await post_video_tencent_multi_browser(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
     else:
         print("🔧 使用传统 playwright 发布视频号")
         post_video_tencent(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
 
-def post_video_ks_smart(title, files, tags, account_file, category=None, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
+async def post_video_tencent_multi_browser(title, files, tags, account_file, category=TencentZoneTypes.LIFESTYLE.value, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
+    """使用 multi-account-browser 发布视频号视频 - 每账号一标签页"""
+    print(f"🚀 使用 multi-account-browser 发布视频号视频")
+    
+    from uploader.tencent_uploader.main_multi_browser import TencentVideoMultiBrowser
+    
+    # 生成文件的完整路径
+    account_files = [Path(BASE_DIR / "cookiesFile" / file) for file in account_file]
+    video_files = [Path(BASE_DIR / "videoFile" / file) for file in files]
+    
+    if enableTimer:
+        publish_datetimes = generate_schedule_time_next_day(len(video_files), videos_per_day, daily_times, start_days)
+    else:
+        publish_datetimes = [0 for i in range(len(video_files))]
+    
+    # 为每个视频文件 x 每个账号 组合创建上传任务
+    for index, video_file in enumerate(video_files):
+        print(f"\n📹 处理视频: {video_file.name}")
+        
+        for account in account_files:
+            print(f"👤 使用账号: {account.name}")
+            
+            # 每个账号都有自己的专属标签页
+            uploader = TencentVideoMultiBrowser(
+                title=title, 
+                file_path=str(video_file), 
+                tags=tags, 
+                publish_date=publish_datetimes[index], 
+                account_file=str(account),
+                category=category
+            )
+            
+            try:
+                await uploader.main()  # 这里需要 await
+                print(f"✅ 账号 {account.stem} 发布视频成功: {title}")
+                
+            except Exception as e:
+                print(f"❌ 账号 {account.stem} 发布视频失败: {e}")
+                
+            # 短暂间隔，避免请求过于频繁
+            await asyncio.sleep(2)  # 这里需要 await
+        
+        # 一个视频发布到所有账号后，稍作间隔
+        if index < len(video_files) - 1:
+            print(f"⏳ 视频 {video_file.name} 发布完成，等待处理下一个视频...")
+            await asyncio.sleep(5)  # 这里需要 await
+
+# 新增：查看所有账号标签页状态
+async def show_all_account_tabs():
+    """显示所有账号的标签页状态"""
+    from utils.browser_adapter import MultiAccountBrowserAdapter
+    
+    adapter = MultiAccountBrowserAdapter()
+    account_tabs = adapter.get_all_account_tabs()
+    
+    print(f"\n📊 当前账号标签页状态 ({len(account_tabs)} 个账号):")
+    for account_file, tab_id in account_tabs.items():
+        account_name = Path(account_file).stem
+        is_valid = await adapter.is_tab_valid(tab_id)
+        status = "🟢 活跃" if is_valid else "🔴 失效"
+        print(f"  {account_name}: {tab_id} - {status}")
+
+# 新增：关闭所有账号标签页（可选）
+async def close_all_account_tabs():
+    """关闭所有账号的标签页"""
+    from utils.browser_adapter import MultiAccountBrowserAdapter
+    
+    adapter = MultiAccountBrowserAdapter()
+    account_tabs = adapter.get_all_account_tabs()
+    
+    for account_file in list(account_tabs.keys()):
+        await adapter.close_account_tab(account_file)
+    
+    print(f"🗑️ 已关闭所有 {len(account_tabs)} 个账号标签页")
+
+async def post_video_ks_smart(title, files, tags, account_file, category=None, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
     """智能选择快手发布方式"""
     if USE_MULTI_ACCOUNT_BROWSER:
         print("🌟 快手暂时使用传统方式，multi-account-browser 支持开发中...")
-        post_video_ks(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
+        await post_video_ks(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
     else:
         print("🔧 使用传统 playwright 发布快手")
         post_video_ks(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
 
-def post_video_xhs_smart(title, files, tags, account_file, category=None, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
+async def post_video_xhs_smart(title, files, tags, account_file, category=None, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
     """智能选择小红书发布方式"""
     if USE_MULTI_ACCOUNT_BROWSER:
         print("🌟 小红书暂时使用传统方式，multi-account-browser 支持开发中...")
-        post_video_xhs(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
+        await post_video_xhs(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
     else:
         print("🔧 使用传统 playwright 发布小红书")
         post_video_xhs(title, files, tags, account_file, category, enableTimer, videos_per_day, daily_times, start_days)
@@ -281,8 +362,3 @@ def post_video_xhs(title,files,tags,account_file,category=TencentZoneTypes.LIFES
             print(f"Hashtag：{tags}")
             app = XiaoHongShuVideo(title, file, tags, publish_datetimes, cookie)
             asyncio.run(app.main(), debug=False)
-
-
-
-# post_video("333",["demo.mp4"],"d","d")
-# post_video_DouYin("333",["demo.mp4"],"d","d")

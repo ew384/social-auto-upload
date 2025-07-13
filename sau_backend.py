@@ -656,13 +656,13 @@ def postVideo():
             # 使用 multi-account-browser 智能发布
             match type:
                 case 1:
-                    post_video_xhs_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                    asyncio.run(post_video_xhs_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days))
                 case 2:
-                    post_video_tencent_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                    asyncio.run(post_video_tencent_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days))
                 case 3:
-                    post_video_DouYin_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                    asyncio.run(post_video_DouYin_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days))
                 case 4:
-                    post_video_ks_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days)
+                    asyncio.run(post_video_ks_smart(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times, start_days))
         else:
             # 使用传统方式发布
             match type:

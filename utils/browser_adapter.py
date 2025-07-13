@@ -13,7 +13,62 @@ class MultiAccountBrowserAdapter:
         self.created_tabs: Dict[str, str] = {}  # account_name -> tab_id
         self.session = requests.Session()
         self.session.headers.update({'Content-Type': 'application/json'})
+        self.account_tabs: Dict[str, str] = {}  # account_file_path -> tab_id
+
+    async def get_or_create_account_tab(self, platform: str, account_name: str, account_file: str, initial_url: str) -> str:
+        """获取或创建账号专属标签页"""
+        # 使用账号文件的绝对路径作为唯一标识
+        account_key = str(Path(account_file).absolute())
+        
+        # 检查该账号是否已有专属标签页
+        if account_key in self.account_tabs:
+            tab_id = self.account_tabs[account_key]
+            
+            # 验证标签页是否仍然有效
+            if await self.is_tab_valid(tab_id):
+                print(f"🔄 使用账号专属标签页: {account_name} (ID: {tab_id})")
+                return tab_id
+            else:
+                # 标签页已失效，从映射中移除
+                print(f"⚠️ 账号标签页已失效，重新创建: {account_name}")
+                del self.account_tabs[account_key]
+        
+        # 为该账号创建新的专属标签页
+        print(f"🆕 为账号创建专属标签页: {account_name}")
+        tab_id = await self.create_account_tab(platform, account_name, initial_url)
+        
+        # 加载该账号的cookies
+        if account_file and Path(account_file).exists():
+            await self.load_cookies(tab_id, account_file)
+        
+        # 保存账号 -> 标签页的映射
+        self.account_tabs[account_key] = tab_id
+        print(f"📋 账号标签页映射已保存: {account_name} -> {tab_id}")
+        
+        return tab_id
     
+    def get_all_account_tabs(self) -> Dict[str, str]:
+        """获取所有账号的标签页映射"""
+        return self.account_tabs.copy()
+    
+    async def close_account_tab(self, account_file: str) -> bool:
+        """关闭特定账号的标签页"""
+        account_key = str(Path(account_file).absolute())
+        
+        if account_key in self.account_tabs:
+            tab_id = self.account_tabs[account_key]
+            try:
+                await self.close_tab(tab_id)
+                del self.account_tabs[account_key]
+                print(f"🗑️ 已关闭账号标签页: {Path(account_file).name}")
+                return True
+            except Exception as e:
+                print(f"❌ 关闭账号标签页失败: {e}")
+                return False
+        else:
+            print(f"⚠️ 未找到账号标签页: {Path(account_file).name}")
+            return False
+
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
         """统一的API请求方法"""
         url = f"{self.api_base_url}{endpoint}"
@@ -157,14 +212,48 @@ class MultiAccountBrowserAdapter:
         except:
             return False
     
-    async def upload_file(self, tab_id: str, file_selector: str, file_path: str) -> bool:
-        """文件上传处理 - 特殊实现"""
-        print(f"📁 准备上传文件: {file_path}")
+    async def set_file_input_automatic(self, tab_id: str, selector: str, file_path: str) -> bool:
+        """完全自动化的文件上传 - 使用 multi-account-browser 的文件设置API"""
+        if not Path(file_path).exists():
+            print(f"❌ 文件不存在: {file_path}")
+            return False
+
+        file_size = Path(file_path).stat().st_size / (1024 * 1024)  # MB
+        print(f"📁 自动设置文件: {Path(file_path).name} ({file_size:.1f}MB)")
         
-        # 方法1: 直接触发文件选择器，然后手动提示用户选择文件
+        try:
+            # 使用新的文件设置 API
+            result = self._make_request('POST', '/account/set-file', {
+                "tabId": tab_id,
+                "selector": selector,
+                "filePath": str(Path(file_path).absolute())
+            })
+            
+            if result.get("success"):
+                file_info = result.get('data', {})
+                method = file_info.get('method', 'Unknown')
+                file_name = file_info.get('fileName', 'Unknown')
+                
+                if file_info.get('success'):
+                    print(f"✅ 文件自动设置成功 ({method}): {file_name}")
+                    return True
+                else:
+                    print(f"⚠️ 文件设置完成但可能需要验证 ({method}): {file_name}")
+                    return True  # 有些情况下虽然返回部分成功，但实际可用
+            else:
+                error_msg = result.get('error', 'Unknown error')
+                print(f"❌ 文件设置失败: {error_msg}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 文件上传API异常: {e}")
+            return False
+
+    async def trigger_file_selector(self, tab_id: str, selector: str) -> bool:
+        """触发文件选择器（备用方案）"""
         trigger_script = f"""
         (function() {{
-            const fileInput = document.querySelector('{file_selector}');
+            const fileInput = document.querySelector('{selector}');
             if (fileInput) {{
                 fileInput.click();
                 return true;
@@ -175,14 +264,9 @@ class MultiAccountBrowserAdapter:
         
         try:
             result = await self.execute_script(tab_id, trigger_script)
-            if result:
-                print(f"🔔 已触发文件选择器，请手动选择文件: {file_path}")
-                # 这里可能需要等待用户手动操作，或者通过其他方式处理
-                return True
-        except Exception as e:
-            print(f"❌ 文件上传失败: {e}")
-        
-        return False
+            return bool(result)
+        except:
+            return False
     
     async def save_cookies(self, tab_id: str, cookie_file: str) -> bool:
         """保存 cookies，替代 context.storage_state()"""
