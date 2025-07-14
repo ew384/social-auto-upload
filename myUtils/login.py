@@ -103,7 +103,7 @@ async def get_tencent_cookie(account_name: str, status_queue: Queue = None):
                 print(f"⏱️ 视频号登录超时: {account_name}")
             
             await context.close()
-            await browser.close()
+            #await browser.close()
             
     except Exception as e:
         if status_queue:
@@ -193,7 +193,7 @@ async def douyin_cookie_gen(account_name: str, status_queue: Queue = None):
                 print(f"⏱️ 抖音登录超时: {account_name}")
             
             await context.close()
-            await browser.close()
+            #await browser.close()
             
     except Exception as e:
         if status_queue:
@@ -244,14 +244,26 @@ async def xiaohongshu_cookie_gen(account_name: str, status_queue: Queue = None):
                     
                     # 检测小红书登录状态
                     if "creator.xiaohongshu.com" in current_url and "login" not in current_url.lower():
+                        print(f"🔍 调试: URL检查通过，查找登录元素...")
                         try:
+                            all_elements = await page.evaluate("""
+                                Array.from(document.querySelectorAll('*')).slice(0, 10).map(el => ({
+                                    tag: el.tagName,
+                                    className: el.className,
+                                    id: el.id,
+                                    text: el.textContent?.substring(0, 50)
+                                }))
+                            """)
+                            print(f"🔍 调试: 页面元素示例 = {all_elements}")
+                            
                             # 检查是否有创作者相关元素
                             creator_element = await page.query_selector('.header-avatar, .user-avatar, .creator-info')
+                            print(f"🔍 调试: 找到创作者元素 = {creator_element is not None}")
                             if creator_element:
                                 login_success = True
                                 break
-                        except:
-                            pass
+                        except Exception as e:
+                            print(f"🔍 调试: 元素查找异常 = {e}")
                     
                     await asyncio.sleep(2)
                     
@@ -283,7 +295,7 @@ async def xiaohongshu_cookie_gen(account_name: str, status_queue: Queue = None):
                 print(f"⏱️ 小红书登录超时: {account_name}")
             
             await context.close()
-            await browser.close()
+            #await browser.close()
             
     except Exception as e:
         if status_queue:
@@ -373,7 +385,7 @@ async def get_ks_cookie(account_name: str, status_queue: Queue = None):
                 print(f"⏱️ 快手登录超时: {account_name}")
             
             await context.close()
-            await browser.close()
+            #await browser.close()
             
     except Exception as e:
         if status_queue:

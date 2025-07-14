@@ -356,6 +356,39 @@ class PlaywrightCompatPage:
         """键盘对象"""
         return PlaywrightCompatKeyboard(self.tab_id, self.adapter)
 
+    async def query_selector(self, selector: str):
+        """查询单个元素 - 修复版本"""
+        script = f'''
+        (() => {{
+            const element = document.querySelector("{selector}");
+            return element !== null;
+        }})()
+        '''
+        
+        try:
+            found = await self.adapter.execute_script(self.tab_id, script)
+            if found:
+                return PlaywrightCompatElement(selector, self.tab_id, self.adapter)
+            else:
+                return None
+        except Exception as e:
+            print(f"⚠️ query_selector 执行失败: {e}")
+            return None
+    
+    async def query_selector_all(self, selector: str):
+        """查询所有匹配元素 - 兼容 Playwright page.query_selector_all()"""
+        script = f'''
+        Array.from(document.querySelectorAll("{selector}")).length
+        '''
+        
+        try:
+            count = await self.adapter.execute_script(self.tab_id, script)
+            if count > 0:
+                return [PlaywrightCompatElement(f'{selector}:nth-child({i+1})', self.tab_id, self.adapter) for i in range(count)]
+            else:
+                return []
+        except:
+            return []
 
 class PlaywrightCompatElement:
     """兼容 Playwright Element API"""
