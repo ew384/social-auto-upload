@@ -14,7 +14,7 @@ class MultiAccountBrowserAdapter:
         self.session.headers.update({'Content-Type': 'application/json'})
         self.account_tabs: Dict[str, str] = {}  # account_file_path -> tab_id
         self.db_path = None
-
+        print(f"🐛 MultiAccountBrowserAdapter.__init__: db_path = {self.db_path}")
     def set_database_path(self, db_path: str):
         """设置数据库路径"""
         self.db_path = db_path
@@ -90,7 +90,7 @@ class MultiAccountBrowserAdapter:
         return f"{platform_name}_{uuid_short}"
 
     async def get_or_create_account_tab(self, platform: str, cookie_file: str, initial_url: str) -> str:
-        """通用的获取或创建账号标签页方法"""
+        """获取或创建账号标签页"""
         
         # 生成标识符和显示名
         tab_identifier = self.generate_tab_identifier(platform, cookie_file)
@@ -105,13 +105,45 @@ class MultiAccountBrowserAdapter:
         print(f"    内部标识: {tab_identifier}")
         print(f"    Cookie文件: {Path(cookie_file).name}")
         
-        # 检查是否已有该账号的标签页
+        # 🔥 新增：先检查 multi-account-browser 中是否已有该账号的标签页
+        try:
+            result = self._make_request('GET', '/accounts')
+            if result.get('success'):
+                existing_tabs = result.get('data', [])
+                
+                # 查找匹配的标签页（根据 cookieFile 匹配）
+                cookie_filename = Path(cookie_file).name
+                for tab in existing_tabs:
+                    if tab.get('cookieFile') and Path(tab['cookieFile']).name == cookie_filename:
+                        tab_id = tab['id']
+                        print(f"🔄 发现现有标签页: {tab['accountName']} (ID: {tab_id})")
+                        
+                        # 验证标签页是否仍然有效
+                        if await self.is_tab_valid(tab_id):
+                            print(f"✅ 现有标签页有效，直接复用")
+                            
+                            # 切换到该标签页
+                            await self.switch_to_tab(tab_id)
+                            
+                            # 更新本地映射
+                            self.account_tabs[account_key] = tab_id
+                            
+                            return tab_id
+                        else:
+                            print(f"⚠️ 现有标签页无效，将创建新的")
+                            # 关闭无效的标签页
+                            await self.close_tab(tab_id)
+                            break
+        except Exception as e:
+            print(f"⚠️ 检查现有标签页失败: {e}")
+        
+        # 检查本地映射中是否已有该账号的标签页
         if account_key in self.account_tabs:
             tab_id = self.account_tabs[account_key]
             
             # 验证标签页是否仍然有效
             if await self.is_tab_valid(tab_id):
-                print(f"🔄 发现现有标签页: {display_name} (ID: {tab_id})")
+                print(f"🔄 发现本地映射标签页: {display_name} (ID: {tab_id})")
                 
                 # 检查当前页面状态
                 current_url = await self.get_page_url(tab_id)
@@ -137,7 +169,7 @@ class MultiAccountBrowserAdapter:
                     await self.switch_to_tab(tab_id)
                     return tab_id
             else:
-                print(f"⚠️ 标签页已失效，重新创建: {display_name}")
+                print(f"⚠️ 本地映射标签页已失效，重新创建: {display_name}")
                 del self.account_tabs[account_key]
         
         # 创建新的标签页（使用内部标识符作为 account_name）

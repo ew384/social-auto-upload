@@ -28,7 +28,10 @@ try:
     cursor.execute("PRAGMA table_info(user_info)")
     user_columns = [col[1] for col in cursor.fetchall()]
     print(f"\nuser_info 表字段: {user_columns}")
-    
+    cursor.execute("SELECT id, type, filePath, userName, status,group_id, last_check_time, check_interval FROM user_info LIMIT 10")
+    sample_data = cursor.fetchall()
+    for sample in sample_data:
+        print(f"{sample}")
     # 检查有分组的账号
     cursor.execute("SELECT id, userName, group_id FROM user_info WHERE group_id IS NOT NULL")
     grouped_accounts = cursor.fetchall()
