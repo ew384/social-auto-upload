@@ -51,7 +51,7 @@ class TencentVideoMultiBrowser:
         self.tab_id = await self.adapter.get_or_create_account_tab(
             platform="weixin",
             cookie_file=self.account_file,
-            initial_url="https://channels.weixin.qq.com/platform"
+            initial_url="https://channels.weixin.qq.com/platform/post/create
         )
         
         tencent_logger.success(f"✅ 视频号账号状态检查完成，标签页ID: {self.tab_id}")
