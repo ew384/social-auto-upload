@@ -9,389 +9,281 @@ import uuid
 from pathlib import Path
 from conf import BASE_DIR
 
-
-async def get_tencent_cookie(account_name: str, status_queue: Queue = None):
-    """
-    视频号登录 - 自动选择浏览器模式
-    """
-    cookie_file = Path(BASE_DIR / "cookiesFile" / f"{account_name}_tencent.json")
-    
-    if status_queue:
-        status_queue.put("开始视频号登录...")
-    
-    print(f"🎯 视频号登录开始: {account_name}")
-    print(f"   Cookie文件: {cookie_file}")
-    
-    try:
-        # 🔥 关键：这里会自动选择最优的浏览器实现
-        # 如果有 multi-account-browser，会复用标签页
-        # 如果没有，会使用传统的 Chrome 启动
-        async with (await async_playwright()) as playwright:
-            browser = await playwright.chromium.launch(
-                headless=False,
-                args=['--no-sandbox', '--disable-setuid-sandbox']
-            )
-            
-            # 创建上下文 - 会自动映射到对应的账号标签页
-            context = await browser.new_context()
-            page = await context.new_page()
-            
-            if status_queue:
-                status_queue.put("正在打开登录页面...")
-            
-            # 导航到登录页
-            await page.goto("https://channels.weixin.qq.com")
-            
-            if status_queue:
-                status_queue.put("请扫码登录，登录完成后会自动保存Cookie...")
-            
-            print("📱 请在浏览器中完成登录...")
-            
-            # 等待用户登录完成的检测
-            login_success = False
-            max_wait_time = 300  # 5分钟超时
-            start_time = time.time()
-            
-            while time.time() - start_time < max_wait_time:
-                try:
-                    current_url = page.url
-                    
-                    # 检测是否已登录（不在登录页面）
-                    if "login" not in current_url.lower():
-                        # 进一步检测登录状态
-                        try:
-                            # 检查是否有用户相关元素
-                            user_element = await page.query_selector('.user-avatar, .avatar, .nickname, .username')
-                            if user_element:
-                                login_success = True
-                                break
-                        except:
-                            pass
-                    
-                    await asyncio.sleep(2)
-                    
-                    # 每30秒提示一次
-                    elapsed = int(time.time() - start_time)
-                    if elapsed % 30 == 0 and elapsed > 0:
-                        if status_queue:
-                            status_queue.put(f"等待登录中... ({elapsed}/{max_wait_time}秒)")
-                        print(f"⏳ 等待登录中... ({elapsed}/{max_wait_time}秒)")
-                
-                except Exception as e:
-                    print(f"⚠️ 登录检测异常: {e}")
-                    await asyncio.sleep(5)
-            
-            if login_success:
-                if status_queue:
-                    status_queue.put("登录成功，正在保存Cookie...")
-                
-                print("✅ 检测到登录成功，保存Cookie...")
-                
-                # 保存 Cookie - 会自动保存到指定文件
-                await context.storage_state(path=str(cookie_file))
-                
-                if status_queue:
-                    status_queue.put("200")  # 成功状态码
-                
-                print(f"✅ 视频号登录完成: {account_name}")
-                print(f"   Cookie已保存: {cookie_file}")
-                
-            else:
-                if status_queue:
-                    status_queue.put("500")  # 失败状态码
-                
-                print(f"⏱️ 视频号登录超时: {account_name}")
-            
+async def douyin_cookie_gen(id,status_queue):
+    url_changed_event = asyncio.Event()
+    async def on_url_change():
+        # 检查是否是主框架的变化
+        if page.url != original_url:
+            url_changed_event.set()
+    async with (await async_playwright()) as playwright:
+        options = {
+            'headless': False
+        }
+        # Make sure to run headed.
+        browser = await playwright.chromium.launch(**options)
+        # Setup context however you like.
+        context = await browser.new_context()  # Pass any options
+        context = await set_init_script(context)
+        # Pause the page, and start recording manually.
+        page = await context.new_page()
+        await page.goto("https://creator.douyin.com/")
+        original_url = page.url
+        img_locator = page.get_by_role("img", name="二维码")
+        # 获取 src 属性值
+        src = await img_locator.get_attribute("src")
+        print("✅ 图片地址:", src)
+        status_queue.put(src)
+        # 监听页面的 'framenavigated' 事件，只关注主框架的变化
+        page.on('framenavigated',
+                lambda frame: asyncio.create_task(on_url_change()) if frame == page.main_frame else None)
+        try:
+            # 等待 URL 变化或超时
+            await asyncio.wait_for(url_changed_event.wait(), timeout=200)  # 最多等待 200 秒
+            print("监听页面跳转成功")
+        except asyncio.TimeoutError:
+            print("监听页面跳转超时")
+            await page.close()
             await context.close()
-            #await browser.close()
-            
-    except Exception as e:
-        if status_queue:
+            await browser.close()
             status_queue.put("500")
-        
-        print(f"❌ 视频号登录失败: {account_name}, 错误: {e}")
-        raise
-
-async def douyin_cookie_gen(account_name: str, status_queue: Queue = None):
-    """
-    抖音登录 - 自动选择浏览器模式
-    """
-    cookie_file = Path(BASE_DIR / "cookiesFile" / f"{account_name}_douyin.json")
-    
-    if status_queue:
-        status_queue.put("开始抖音登录...")
-    
-    print(f"🎯 抖音登录开始: {account_name}")
-    
-    try:
-        async with (await async_playwright()) as playwright:
-            browser = await playwright.chromium.launch(
-                headless=False,
-                args=['--no-sandbox', '--disable-setuid-sandbox']
-            )
-            
-            context = await browser.new_context()
-            page = await context.new_page()
-            
-            if status_queue:
-                status_queue.put("正在打开登录页面...")
-            
-            await page.goto("https://creator.douyin.com")
-            
-            if status_queue:
-                status_queue.put("请完成登录，登录完成后会自动保存Cookie...")
-            
-            print("📱 请在浏览器中完成抖音登录...")
-            
-            # 等待登录完成
-            login_success = False
-            max_wait_time = 300
-            start_time = time.time()
-            
-            while time.time() - start_time < max_wait_time:
-                try:
-                    current_url = page.url
-                    
-                    # 检测抖音登录状态
-                    if "creator.douyin.com" in current_url and "login" not in current_url.lower():
-                        try:
-                            # 检查是否有创作者相关元素
-                            creator_element = await page.query_selector('.semi-avatar, .creator-header, .user-info')
-                            if creator_element:
-                                login_success = True
-                                break
-                        except:
-                            pass
-                    
-                    await asyncio.sleep(2)
-                    
-                    elapsed = int(time.time() - start_time)
-                    if elapsed % 30 == 0 and elapsed > 0:
-                        if status_queue:
-                            status_queue.put(f"等待抖音登录中... ({elapsed}/{max_wait_time}秒)")
-                
-                except Exception as e:
-                    print(f"⚠️ 抖音登录检测异常: {e}")
-                    await asyncio.sleep(5)
-            
-            if login_success:
-                if status_queue:
-                    status_queue.put("抖音登录成功，正在保存Cookie...")
-                
-                print("✅ 抖音登录成功，保存Cookie...")
-                await context.storage_state(path=str(cookie_file))
-                
-                if status_queue:
-                    status_queue.put("200")
-                
-                print(f"✅ 抖音登录完成: {account_name}")
-                
-            else:
-                if status_queue:
-                    status_queue.put("500")
-                
-                print(f"⏱️ 抖音登录超时: {account_name}")
-            
+            return None
+        uuid_v1 = uuid.uuid1()
+        print(f"UUID v1: {uuid_v1}")
+        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        result = await check_cookie(3, f"{uuid_v1}.json")
+        if not result:
+            status_queue.put("500")
+            await page.close()
             await context.close()
-            #await browser.close()
-            
-    except Exception as e:
-        if status_queue:
-            status_queue.put("500")
-        
-        print(f"❌ 抖音登录失败: {account_name}, 错误: {e}")
-        raise
+            await browser.close()
+            return None
+        await page.close()
+        await context.close()
+        await browser.close()
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                                INSERT INTO user_info (type, filePath, userName, status)
+                                VALUES (?, ?, ?, ?)
+                                ''', (3, f"{uuid_v1}.json", id, 1))
+            conn.commit()
+            print("✅ 用户状态已记录")
+        status_queue.put("200")
 
-async def xiaohongshu_cookie_gen(account_name: str, status_queue: Queue = None):
-    """
-    小红书登录 - 自动选择浏览器模式
-    """
-    cookie_file = Path(BASE_DIR / "cookiesFile" / f"{account_name}_xiaohongshu.json")
-    
-    if status_queue:
-        status_queue.put("开始小红书登录...")
-    
-    print(f"🎯 小红书登录开始: {account_name}")
-    
-    try:
-        async with (await async_playwright()) as playwright:
-            browser = await playwright.chromium.launch(
-                headless=False,
-                args=['--no-sandbox', '--disable-setuid-sandbox']
-            )
-            
-            context = await browser.new_context()
-            page = await context.new_page()
-            
-            if status_queue:
-                status_queue.put("正在打开小红书创作者平台...")
-            
-            await page.goto("https://creator.xiaohongshu.com")
-            
-            if status_queue:
-                status_queue.put("请完成登录，登录完成后会自动保存Cookie...")
-            
-            print("📱 请在浏览器中完成小红书登录...")
-            
-            # 等待登录完成
-            login_success = False
-            max_wait_time = 300
-            start_time = time.time()
-            
-            while time.time() - start_time < max_wait_time:
-                try:
-                    current_url = page.url
-                    
-                    # 检测小红书登录状态
-                    if "creator.xiaohongshu.com" in current_url and "login" not in current_url.lower():
-                        print(f"🔍 调试: URL检查通过，查找登录元素...")
-                        try:
-                            all_elements = await page.evaluate("""
-                                Array.from(document.querySelectorAll('*')).slice(0, 10).map(el => ({
-                                    tag: el.tagName,
-                                    className: el.className,
-                                    id: el.id,
-                                    text: el.textContent?.substring(0, 50)
-                                }))
-                            """)
-                            print(f"🔍 调试: 页面元素示例 = {all_elements}")
-                            
-                            # 检查是否有创作者相关元素
-                            creator_element = await page.query_selector('.header-avatar, .user-avatar, .creator-info')
-                            print(f"🔍 调试: 找到创作者元素 = {creator_element is not None}")
-                            if creator_element:
-                                login_success = True
-                                break
-                        except Exception as e:
-                            print(f"🔍 调试: 元素查找异常 = {e}")
-                    
-                    await asyncio.sleep(2)
-                    
-                    elapsed = int(time.time() - start_time)
-                    if elapsed % 30 == 0 and elapsed > 0:
-                        if status_queue:
-                            status_queue.put(f"等待小红书登录中... ({elapsed}/{max_wait_time}秒)")
-                
-                except Exception as e:
-                    print(f"⚠️ 小红书登录检测异常: {e}")
-                    await asyncio.sleep(5)
-            
-            if login_success:
-                if status_queue:
-                    status_queue.put("小红书登录成功，正在保存Cookie...")
-                
-                print("✅ 小红书登录成功，保存Cookie...")
-                await context.storage_state(path=str(cookie_file))
-                
-                if status_queue:
-                    status_queue.put("200")
-                
-                print(f"✅ 小红书登录完成: {account_name}")
-                
-            else:
-                if status_queue:
-                    status_queue.put("500")
-                
-                print(f"⏱️ 小红书登录超时: {account_name}")
-            
-            await context.close()
-            #await browser.close()
-            
-    except Exception as e:
-        if status_queue:
-            status_queue.put("500")
-        
-        print(f"❌ 小红书登录失败: {account_name}, 错误: {e}")
-        raise
 
-async def get_ks_cookie(account_name: str, status_queue: Queue = None):
-    """
-    快手登录 - 自动选择浏览器模式
-    """
-    cookie_file = Path(BASE_DIR / "cookiesFile" / f"{account_name}_kuaishou.json")
-    
-    if status_queue:
-        status_queue.put("开始快手登录...")
-    
-    print(f"🎯 快手登录开始: {account_name}")
-    
-    try:
-        async with (await async_playwright()) as playwright:
-            browser = await playwright.chromium.launch(
-                headless=False,
-                args=['--no-sandbox', '--disable-setuid-sandbox']
-            )
-            
-            context = await browser.new_context()
-            page = await context.new_page()
-            
-            if status_queue:
-                status_queue.put("正在打开快手创作者平台...")
-            
-            await page.goto("https://cp.kuaishou.com")
-            
-            if status_queue:
-                status_queue.put("请完成登录，登录完成后会自动保存Cookie...")
-            
-            print("📱 请在浏览器中完成快手登录...")
-            
-            # 等待登录完成
-            login_success = False
-            max_wait_time = 300
-            start_time = time.time()
-            
-            while time.time() - start_time < max_wait_time:
-                try:
-                    current_url = page.url
-                    
-                    # 检测快手登录状态
-                    if "cp.kuaishou.com" in current_url and "login" not in current_url.lower():
-                        try:
-                            # 检查是否有创作者相关元素
-                            creator_element = await page.query_selector('.header-userinfo, .user-avatar, .creator-header')
-                            if creator_element:
-                                login_success = True
-                                break
-                        except:
-                            pass
-                    
-                    await asyncio.sleep(2)
-                    
-                    elapsed = int(time.time() - start_time)
-                    if elapsed % 30 == 0 and elapsed > 0:
-                        if status_queue:
-                            status_queue.put(f"等待快手登录中... ({elapsed}/{max_wait_time}秒)")
-                
-                except Exception as e:
-                    print(f"⚠️ 快手登录检测异常: {e}")
-                    await asyncio.sleep(5)
-            
-            if login_success:
-                if status_queue:
-                    status_queue.put("快手登录成功，正在保存Cookie...")
-                
-                print("✅ 快手登录成功，保存Cookie...")
-                await context.storage_state(path=str(cookie_file))
-                
-                if status_queue:
-                    status_queue.put("200")
-                
-                print(f"✅ 快手登录完成: {account_name}")
-                
-            else:
-                if status_queue:
-                    status_queue.put("500")
-                
-                print(f"⏱️ 快手登录超时: {account_name}")
-            
-            await context.close()
-            #await browser.close()
-            
-    except Exception as e:
-        if status_queue:
+# 视频号登录
+async def get_tencent_cookie(id,status_queue):
+    url_changed_event = asyncio.Event()
+    async def on_url_change():
+        # 检查是否是主框架的变化
+        if page.url != original_url:
+            url_changed_event.set()
+
+    async with (await async_playwright()) as playwright:
+        options = {
+            'args': [
+                '--lang en-GB'
+            ],
+            'headless': False,  # Set headless option here
+        }
+        # Make sure to run headed.
+        browser = await playwright.chromium.launch(**options)
+        # Setup context however you like.
+        context = await browser.new_context()  # Pass any options
+        # Pause the page, and start recording manually.
+        context = await set_init_script(context)
+        page = await context.new_page()
+        await page.goto("https://channels.weixin.qq.com")
+        original_url = page.url
+
+        # 监听页面的 'framenavigated' 事件，只关注主框架的变化
+        page.on('framenavigated',
+                lambda frame: asyncio.create_task(on_url_change()) if frame == page.main_frame else None)
+
+        # 等待 iframe 出现（最多等 60 秒）
+        iframe_locator = page.frame_locator("iframe").first
+
+        # 获取 iframe 中的第一个 img 元素
+        img_locator = iframe_locator.get_by_role("img").first
+
+        # 获取 src 属性值
+        src = await img_locator.get_attribute("src")
+        print("✅ 图片地址:", src)
+        status_queue.put(src)
+
+        try:
+            # 等待 URL 变化或超时
+            await asyncio.wait_for(url_changed_event.wait(), timeout=200)  # 最多等待 200 秒
+            print("监听页面跳转成功")
+        except asyncio.TimeoutError:
             status_queue.put("500")
-        
-        print(f"❌ 快手登录失败: {account_name}, 错误: {e}")
-        raise
-# a = asyncio.run(xiaohongshu_cookie_gen(4,None))
-# print(a)
+            print("监听页面跳转超时")
+            await page.close()
+            await context.close()
+            await browser.close()
+            return None
+        uuid_v1 = uuid.uuid1()
+        print(f"UUID v1: {uuid_v1}")
+        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        result = await check_cookie(2,f"{uuid_v1}.json")
+        if not result:
+            status_queue.put("500")
+            await page.close()
+            await context.close()
+            await browser.close()
+            return None
+        await page.close()
+        await context.close()
+        await browser.close()
+
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                                INSERT INTO user_info (type, filePath, userName, status)
+                                VALUES (?, ?, ?, ?)
+                                ''', (2, f"{uuid_v1}.json", id, 1))
+            conn.commit()
+            print("✅ 用户状态已记录")
+        status_queue.put("200")
+
+# 快手登录
+async def get_ks_cookie(id,status_queue):
+    url_changed_event = asyncio.Event()
+    async def on_url_change():
+        # 检查是否是主框架的变化
+        if page.url != original_url:
+            url_changed_event.set()
+    async with (await async_playwright()) as playwright:
+        options = {
+            'args': [
+                '--lang en-GB'
+            ],
+            'headless': False,  # Set headless option here
+        }
+        # Make sure to run headed.
+        browser = await playwright.chromium.launch(**options)
+        # Setup context however you like.
+        context = await browser.new_context()  # Pass any options
+        context = await set_init_script(context)
+        # Pause the page, and start recording manually.
+        page = await context.new_page()
+        await page.goto("https://cp.kuaishou.com")
+
+        # 定位并点击“立即登录”按钮（类型为 link）
+        await page.get_by_role("link", name="立即登录").click()
+        await page.get_by_text("扫码登录").click()
+        img_locator = page.get_by_role("img", name="qrcode")
+        # 获取 src 属性值
+        src = await img_locator.get_attribute("src")
+        original_url = page.url
+        print("✅ 图片地址:", src)
+        status_queue.put(src)
+        # 监听页面的 'framenavigated' 事件，只关注主框架的变化
+        page.on('framenavigated',
+                lambda frame: asyncio.create_task(on_url_change()) if frame == page.main_frame else None)
+
+        try:
+            # 等待 URL 变化或超时
+            await asyncio.wait_for(url_changed_event.wait(), timeout=200)  # 最多等待 200 秒
+            print("监听页面跳转成功")
+        except asyncio.TimeoutError:
+            status_queue.put("500")
+            print("监听页面跳转超时")
+            await page.close()
+            await context.close()
+            await browser.close()
+            return None
+        uuid_v1 = uuid.uuid1()
+        print(f"UUID v1: {uuid_v1}")
+        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        result = await check_cookie(4, f"{uuid_v1}.json")
+        if not result:
+            status_queue.put("500")
+            await page.close()
+            await context.close()
+            await browser.close()
+            return None
+        await page.close()
+        await context.close()
+        await browser.close()
+
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                                        INSERT INTO user_info (type, filePath, userName, status)
+                                        VALUES (?, ?, ?, ?)
+                                        ''', (4, f"{uuid_v1}.json", id, 1))
+            conn.commit()
+            print("✅ 用户状态已记录")
+        status_queue.put("200")
+
+# 小红书登录
+async def xiaohongshu_cookie_gen(id,status_queue):
+    url_changed_event = asyncio.Event()
+
+    async def on_url_change():
+        # 检查是否是主框架的变化
+        if page.url != original_url:
+            url_changed_event.set()
+
+    async with (await async_playwright()) as playwright:
+        options = {
+            'args': [
+                '--lang en-GB'
+            ],
+            'headless': False,  # Set headless option here
+        }
+        # Make sure to run headed.
+        browser = await playwright.chromium.launch(**options)
+        # Setup context however you like.
+        context = await browser.new_context()  # Pass any options
+        context = await set_init_script(context)
+        # Pause the page, and start recording manually.
+        page = await context.new_page()
+        await page.goto("https://creator.xiaohongshu.com/")
+        await page.locator('img.css-wemwzq').click()
+
+        img_locator = page.get_by_role("img").nth(2)
+        # 获取 src 属性值
+        src = await img_locator.get_attribute("src")
+        original_url = page.url
+        print("✅ 图片地址:", src)
+        status_queue.put(src)
+        # 监听页面的 'framenavigated' 事件，只关注主框架的变化
+        page.on('framenavigated',
+                lambda frame: asyncio.create_task(on_url_change()) if frame == page.main_frame else None)
+
+        try:
+            # 等待 URL 变化或超时
+            await asyncio.wait_for(url_changed_event.wait(), timeout=200)  # 最多等待 200 秒
+            print("监听页面跳转成功")
+        except asyncio.TimeoutError:
+            status_queue.put("500")
+            print("监听页面跳转超时")
+            await page.close()
+            await context.close()
+            await browser.close()
+            return None
+        uuid_v1 = uuid.uuid1()
+        print(f"UUID v1: {uuid_v1}")
+        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        result = await check_cookie(1, f"{uuid_v1}.json")
+        if not result:
+            status_queue.put("500")
+            await page.close()
+            await context.close()
+            await browser.close()
+            return None
+        await page.close()
+        await context.close()
+        await browser.close()
+
+        with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                           INSERT INTO user_info (type, filePath, userName, status)
+                           VALUES (?, ?, ?, ?)
+                           ''', (1, f"{uuid_v1}.json", id, 1))
+            conn.commit()
+            print("✅ 用户状态已记录")
+        status_queue.put("200")

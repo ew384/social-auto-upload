@@ -358,10 +358,18 @@ class PlaywrightCompatPage:
 
     async def query_selector(self, selector: str):
         """查询单个元素 - 修复版本"""
+        # 转义选择器中的特殊字符
+        escaped_selector = selector.replace('"', '\\"')
+        
         script = f'''
         (() => {{
-            const element = document.querySelector("{selector}");
-            return element !== null;
+            try {{
+                const element = document.querySelector("{escaped_selector}");
+                return element !== null;
+            }} catch (e) {{
+                console.error("选择器错误:", e);
+                return false;
+            }}
         }})()
         '''
         
@@ -372,7 +380,7 @@ class PlaywrightCompatPage:
             else:
                 return None
         except Exception as e:
-            print(f"⚠️ query_selector 执行失败: {e}")
+            print(f"⚠️ query_selector 执行失败 - selector: {selector}, error: {e}")
             return None
     
     async def query_selector_all(self, selector: str):
