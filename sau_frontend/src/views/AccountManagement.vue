@@ -786,9 +786,15 @@ const connectSSE = (platform, name) => {
       try {
         if (data.startsWith("data:image")) {
           qrCodeData.value = data;
+        } else if (data.startsWith("http")) {
+          qrCodeData.value = data;
         } else {
           qrCodeData.value = `data:image/png;base64,${data}`;
         }
+        console.log(
+          "设置二维码数据:",
+          qrCodeData.value.substring(0, 50) + "..."
+        );
       } catch (error) {
         console.error("处理二维码数据出错:", error);
       }

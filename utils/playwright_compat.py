@@ -288,221 +288,121 @@ class PlaywrightCompatPage:
             except Exception as e:
                 print(f"⚠️ [{self.tab_id}] URL 监控异常: {e}")
                 await asyncio.sleep(check_interval)
+    
     async def goto(self, url: str, **kwargs) -> None:
-        """导航到指定URL - 简化版本"""
-        print(f"🔗 [{self.tab_id}] 导航到: {url} (第 {self._navigation_count + 1} 次导航)")
+        """导航到指定URL - 修复脚本注入时机"""
+        print(f"🔗 [{self.tab_id}] 快速导航到: {url}")
         
         self._navigation_count += 1
         
-        # 在首次导航前处理初始化脚本
-        if self.init_scripts and self._navigation_count == 1 and not self._scripts_injected:
-            await self._register_init_scripts_before_first_navigation()
-        
-        # 执行导航
+        # 🔥 直接导航，不处理脚本
         await self.adapter.navigate_to_url(self.tab_id, url)
         self._url = url
         
-        # 等待页面加载完成
-        await self._wait_for_page_ready()
+        # 🔥 先等待页面基本就绪
+        await self._fast_wait_for_page_ready()
         
-        # 确保脚本在页面加载后执行（备用保障）
-        if hasattr(self, '_fallback_scripts_needed') and self._fallback_scripts_needed:
-            await self._inject_fallback_scripts()
-            self._fallback_scripts_needed = False  # 执行后清除标记
-    
+        # 🔥 页面就绪后再处理脚本
+        if self.init_scripts and self._navigation_count == 1 and not self._scripts_injected:
+            await self._handle_init_scripts_after_ready()
 
-    async def _register_init_scripts_before_first_navigation(self) -> None:
-        """在首次导航前注册初始化脚本"""
-        print(f"📜 [{self.tab_id}] 首次导航前准备 {len(self.init_scripts)} 个初始化脚本")
+    async def _handle_init_scripts_after_ready(self) -> None:
+        """页面就绪后处理初始化脚本"""
+        print(f"📜 [{self.tab_id}] 页面就绪后注入 {len(self.init_scripts)} 个脚本")
         
-        self._scripts_injected = True
-        
-        # 🔥 关键修改：由于 multi-account-browser 不支持 add-init-script API
-        # 直接标记使用备用方案
-        print(f"📋 [{self.tab_id}] multi-account-browser 不支持 add-init-script API，使用备用方案")
-        self._fallback_scripts_needed = True
-        
-        # 🔥 或者，我们可以尝试其他方式，比如在导航前立即执行脚本
-        # 这样可以在页面内容加载前执行，接近原始的 init-script 效果
-        if True:  # 尝试预执行方案
-            await self._pre_execute_init_scripts()
-
-    async def _pre_execute_init_scripts(self) -> None:
-        """预执行初始化脚本 - 在导航前执行"""
-        print(f"🚀 [{self.tab_id}] 在导航前预执行 {len(self.init_scripts)} 个初始化脚本")
-        
-        for i, script_content in enumerate(self.init_scripts):
-            try:
-                # 🔥 关键：包装脚本，使其能在任何环境下安全执行
-                pre_execute_script = f'''
-                (function() {{
-                    try {{
-                        console.log("预执行初始化脚本 {i+1}...");
-                        
-                        // 如果当前页面是 about:blank，设置一些基本的全局变量
-                        if (window.location.href === 'about:blank') {{
-                            console.log("在空白页面设置初始化脚本...");
-                            // 将脚本保存到全局变量，等页面加载时执行
-                            window.__initScripts = window.__initScripts || [];
-                            window.__initScripts.push(function() {{
-                                {script_content}
-                            }});
-                            return "queued";
-                        }} else {{
-                            // 如果已经有页面内容，直接执行
-                            console.log("直接执行初始化脚本...");
-                            {script_content}
-                            return "executed";
-                        }}
-                    }} catch (e) {{
-                        console.error("预执行脚本失败:", e.message);
-                        return "failed";
-                    }}
-                }})();
-                '''
-                
-                result = await self.adapter.execute_script(self.tab_id, pre_execute_script)
-                print(f"✅ [{self.tab_id}] 预执行脚本 {i+1} 结果: {result}")
-                
-            except Exception as e:
-                print(f"⚠️ [{self.tab_id}] 预执行脚本 {i+1} 失败: {e}")
-    
-        # 设置页面加载监听器，确保脚本在新页面加载时也能执行
-        await self._setup_script_execution_listener()
-
-    async def _setup_script_execution_listener(self) -> None:
-        """设置脚本执行监听器"""
         try:
-            listener_script = '''
-            (function() {
-                console.log("设置初始化脚本监听器...");
-                
-                // 监听页面加载事件
-                function executeQueuedScripts() {
-                    if (window.__initScripts && window.__initScripts.length > 0) {
-                        console.log("执行队列中的初始化脚本:", window.__initScripts.length);
-                        window.__initScripts.forEach(function(scriptFunc, index) {
-                            try {
-                                scriptFunc();
-                                console.log("队列脚本", index + 1, "执行成功");
-                            } catch (e) {
-                                console.error("队列脚本", index + 1, "执行失败:", e);
-                            }
-                        });
-                        // 清空队列
-                        window.__initScripts = [];
-                    }
-                }
-                
-                // 如果 DOM 已经加载，立即执行
-                if (document.readyState !== 'loading') {
-                    executeQueuedScripts();
-                }
-                
-                // 监听 DOM 加载完成
-                document.addEventListener('DOMContentLoaded', executeQueuedScripts);
-                
-                // 监听页面完全加载
-                window.addEventListener('load', executeQueuedScripts);
-                
-                return "listener_set";
-            })();
-            '''
+            self._scripts_injected = True
             
-            result = await self.adapter.execute_script(self.tab_id, listener_script)
-            print(f"✅ [{self.tab_id}] 脚本监听器设置结果: {result}")
-            
+            for i, script_content in enumerate(self.init_scripts):
+                # 🔥 注入前再次确认页面状态
+                await self._ensure_page_ready_for_script()
+                
+                try:
+                    await self.adapter.execute_script(self.tab_id, script_content)
+                    print(f"✅ [{self.tab_id}] 脚本 {i+1} 注入成功")
+                except Exception as script_error:
+                    print(f"⚠️ [{self.tab_id}] 脚本 {i+1} 注入失败: {script_error}")
+                    # 🔥 单个脚本失败不影响整体流程
+                    
         except Exception as e:
-            print(f"⚠️ [{self.tab_id}] 设置脚本监听器失败: {e}")
+            print(f"⚠️ [{self.tab_id}] 脚本注入过程失败: {e}")
 
-    async def _inject_fallback_scripts(self) -> None:
-        """备用方案：导航后立即注入脚本"""
-        print(f"🔧 [{self.tab_id}] 使用备用方案注入 {len(self.init_scripts)} 个脚本")
+    async def _ensure_page_ready_for_script(self) -> None:
+        """确保页面准备好执行脚本"""
+        max_attempts = 5
         
-        for i, script_content in enumerate(self.init_scripts):
+        for attempt in range(max_attempts):
             try:
-                # 包装脚本以提高成功率
-                safe_script = f'''
-                (function() {{
-                    try {{
-                        console.log("执行备用初始化脚本 {i+1}...");
-                        
-                        // 等待 DOM 基本就绪
-                        if (document.readyState === 'loading') {{
-                            console.log("DOM 仍在加载，延迟执行脚本...");
-                            setTimeout(function() {{
-                                try {{
-                                    {script_content}
-                                    console.log("延迟执行的初始化脚本完成");
-                                }} catch (e) {{
-                                    console.error("延迟执行脚本失败:", e);
-                                }}
-                            }}, 1000);
-                        }} else {{
-                            console.log("立即执行初始化脚本...");
-                            {script_content}
-                            console.log("立即执行的初始化脚本完成");
-                        }}
-                        return true;
-                    }} catch (e) {{
-                        console.error("备用脚本执行失败:", e.message);
-                        console.error("错误堆栈:", e.stack);
-                        return false;
-                    }}
-                }})();
-                '''
-                
-                result = await self.adapter.execute_script(self.tab_id, safe_script)
-                print(f"✅ [{self.tab_id}] 备用脚本 {i+1} 执行结果: {result}")
-                
-            except Exception as e:
-                print(f"❌ [{self.tab_id}] 备用脚本 {i+1} 执行失败: {e}")
-        
-        # 清除标记
-        self._fallback_scripts_needed = False
-    
-    async def _wait_for_page_ready(self) -> None:
-        """等待页面就绪 - 保持原有逻辑"""
-        print(f"⏳ [{self.tab_id}] 等待页面加载完成...")
-        
-        max_wait_time = 10  # 减少等待时间
-        check_interval = 0.5
-        start_time = asyncio.get_event_loop().time()
-        
-        while (asyncio.get_event_loop().time() - start_time) < max_wait_time:
-            try:
-                page_status = await self.adapter.execute_script(self.tab_id, '''
-                (function() {
+                # 🔥 简单但有效的就绪检查
+                ready_check = await self.adapter.execute_script(self.tab_id, '''
+                (() => {
                     try {
-                        return {
-                            readyState: document.readyState,
-                            hasBody: !!document.body,
-                            url: window.location.href,
-                            bodyChildren: document.body ? document.body.children.length : 0
-                        };
+                        return document.readyState === 'complete' && 
+                            !!document.body && 
+                            !!window.location.href &&
+                            window.location.href !== 'about:blank';
                     } catch (e) {
-                        return { error: e.message, readyState: 'loading' };
+                        return false;
                     }
                 })()
                 ''')
                 
-                if page_status:
-                    ready_state = page_status.get('readyState')
-                    has_body = page_status.get('hasBody', False)
-                    body_children = page_status.get('bodyChildren', 0)
+                if ready_check:
+                    return  # 页面准备好了
                     
-                    if (ready_state in ['interactive', 'complete'] and 
-                        has_body and body_children > 0):
-                        print(f"✅ [{self.tab_id}] 页面加载完成")
-                        return
-                
             except Exception as e:
-                print(f"⚠️ [{self.tab_id}] 页面状态检查失败: {e}")
+                print(f"⚠️ [{self.tab_id}] 就绪检查失败 (尝试 {attempt + 1}): {e}")
+            
+            # 等待后重试
+            await asyncio.sleep(1)
+        
+        print(f"⚠️ [{self.tab_id}] 页面就绪检查超时，继续执行")
+
+    async def _fast_wait_for_page_ready(self) -> None:
+        """快速等待页面就绪 - 更可靠的版本"""
+        print(f"⏳ [{self.tab_id}] 等待页面基本就绪...")
+        
+        max_wait_time = 10  # 稍微增加到10秒，确保稳定
+        check_interval = 0.5  # 更频繁的检查
+        start_time = asyncio.get_event_loop().time()
+        
+        while (asyncio.get_event_loop().time() - start_time) < max_wait_time:
+            try:
+                # 🔥 基础但关键的状态检查
+                page_status = await self.adapter.execute_script(self.tab_id, '''
+                (() => {
+                    try {
+                        return {
+                            readyState: document.readyState,
+                            hasBody: !!document.body,
+                            hasHead: !!document.head,
+                            url: window.location.href,
+                            isBlank: window.location.href === 'about:blank'
+                        };
+                    } catch (e) {
+                        return { error: e.message };
+                    }
+                })()
+                ''')
+                
+                if (page_status and 
+                    page_status.get('readyState') in ['interactive', 'complete'] and 
+                    page_status.get('hasBody') and
+                    not page_status.get('isBlank')):
+                    
+                    print(f"✅ [{self.tab_id}] 页面基本就绪")
+                    # 🔥 额外等待一点时间确保稳定
+                    await asyncio.sleep(1)
+                    return
+                    
+            except Exception as e:
+                # 🔥 这个阶段的错误是正常的，页面可能还在加载
+                pass
             
             await asyncio.sleep(check_interval)
         
-        print(f"⚠️ [{self.tab_id}] 页面加载等待超时，继续执行")
-    
+        print(f"⚠️ [{self.tab_id}] 页面基本就绪等待超时")
+
     async def wait_for_url(self, url_pattern: str, timeout: int = 30000, **kwargs) -> None:
         """等待URL匹配"""
         timeout_seconds = timeout / 1000
@@ -667,7 +567,7 @@ class PlaywrightCompatElement:
             else throw new Error("元素未找到: {self.selector}");
             '''
         await self.adapter.execute_script(self.tab_id, script)
-        await asyncio.sleep(3)
+        await asyncio.sleep(1)
 
     async def fill(self, value: str, **kwargs) -> None:
         """填充输入"""
@@ -732,7 +632,7 @@ class PlaywrightCompatElement:
     def nth(self, index: int) -> 'PlaywrightCompatElement':
         """获取第n个元素 - 修复版本，使用索引而不是 nth-of-type"""
         if self.is_xpath:
-            nth_selector = f'({self.selector})[{index + 1}]'
+            nth_selector = f'({self.selector})[{index}]'
         else:
             # 🔥 关键修复：不使用 nth-of-type，直接用 JavaScript 索引
             nth_selector = f'__INDEX_SELECTOR__{self.selector}__INDEX__{index}'
@@ -786,7 +686,7 @@ class PlaywrightCompatElement:
         try:
             result = await self.adapter.execute_script(self.tab_id, script)
             if result and result.strip():
-                print(f"✅ [{self.tab_id}] 成功获取属性 '{name}': {result[:50]}...")
+                #print(f"✅ [{self.tab_id}] 成功获取属性 '{name}': {result[:50]}...")
                 return result
             else:
                 print(f"⚠️ [{self.tab_id}] 属性 '{name}' 为空或null")

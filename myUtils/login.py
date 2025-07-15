@@ -249,6 +249,7 @@ async def xiaohongshu_cookie_gen(id,status_queue):
         original_url = page.url
         print("✅ 图片地址:", src)
         status_queue.put(src)
+        
         # 监听页面的 'framenavigated' 事件，只关注主框架的变化
         page.on('framenavigated',
                 lambda frame: asyncio.create_task(on_url_change()) if frame == page.main_frame else None)
