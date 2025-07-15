@@ -228,11 +228,7 @@ class PlaywrightCompatPage:
         self.tab_manager = tab_manager
         self.adapter = tab_manager.get_adapter()
         self.storage_state = storage_state
-        self.init_scripts = init_scripts
         self._url = ""
-        self.init_scripts = init_scripts or []  # 从 Context 继承的脚本
-        self._navigation_count = 0  # 🔥 导航计数器
-        self._scripts_injected = False  # 🔥 脚本注入状态标记
         self._event_listeners = {}  # 🔥 新增：事件监听器存储
         self.main_frame = self
 
@@ -290,118 +286,18 @@ class PlaywrightCompatPage:
                 await asyncio.sleep(check_interval)
     
     async def goto(self, url: str, **kwargs) -> None:
-        """导航到指定URL - 修复脚本注入时机"""
-        print(f"🔗 [{self.tab_id}] 快速导航到: {url}")
+        """导航到指定URL - 简化版本，初始化脚本由 multi-account-browser 自动处理"""
         
-        self._navigation_count += 1
+        print(f"🔗 [{self.tab_id}] 导航到: {url}")
         
-        # 🔥 直接导航，不处理脚本
+        # 🔥 直接导航，初始化脚本会由 TabManager 在 did-finish-load 时自动注入
         await self.adapter.navigate_to_url(self.tab_id, url)
         self._url = url
         
-        # 🔥 先等待页面基本就绪
-        await self._fast_wait_for_page_ready()
+        # 简单等待页面加载完成
+        await asyncio.sleep(3)  # 或者你可以保留一个简单的等待逻辑
         
-        # 🔥 页面就绪后再处理脚本
-        if self.init_scripts and self._navigation_count == 1 and not self._scripts_injected:
-            await self._handle_init_scripts_after_ready()
-
-    async def _handle_init_scripts_after_ready(self) -> None:
-        """页面就绪后处理初始化脚本"""
-        print(f"📜 [{self.tab_id}] 页面就绪后注入 {len(self.init_scripts)} 个脚本")
-        
-        try:
-            self._scripts_injected = True
-            
-            for i, script_content in enumerate(self.init_scripts):
-                # 🔥 注入前再次确认页面状态
-                await self._ensure_page_ready_for_script()
-                
-                try:
-                    await self.adapter.execute_script(self.tab_id, script_content)
-                    print(f"✅ [{self.tab_id}] 脚本 {i+1} 注入成功")
-                except Exception as script_error:
-                    print(f"⚠️ [{self.tab_id}] 脚本 {i+1} 注入失败: {script_error}")
-                    # 🔥 单个脚本失败不影响整体流程
-                    
-        except Exception as e:
-            print(f"⚠️ [{self.tab_id}] 脚本注入过程失败: {e}")
-
-    async def _ensure_page_ready_for_script(self) -> None:
-        """确保页面准备好执行脚本"""
-        max_attempts = 5
-        
-        for attempt in range(max_attempts):
-            try:
-                # 🔥 简单但有效的就绪检查
-                ready_check = await self.adapter.execute_script(self.tab_id, '''
-                (() => {
-                    try {
-                        return document.readyState === 'complete' && 
-                            !!document.body && 
-                            !!window.location.href &&
-                            window.location.href !== 'about:blank';
-                    } catch (e) {
-                        return false;
-                    }
-                })()
-                ''')
-                
-                if ready_check:
-                    return  # 页面准备好了
-                    
-            except Exception as e:
-                print(f"⚠️ [{self.tab_id}] 就绪检查失败 (尝试 {attempt + 1}): {e}")
-            
-            # 等待后重试
-            await asyncio.sleep(1)
-        
-        print(f"⚠️ [{self.tab_id}] 页面就绪检查超时，继续执行")
-
-    async def _fast_wait_for_page_ready(self) -> None:
-        """快速等待页面就绪 - 更可靠的版本"""
-        print(f"⏳ [{self.tab_id}] 等待页面基本就绪...")
-        
-        max_wait_time = 10  # 稍微增加到10秒，确保稳定
-        check_interval = 0.5  # 更频繁的检查
-        start_time = asyncio.get_event_loop().time()
-        
-        while (asyncio.get_event_loop().time() - start_time) < max_wait_time:
-            try:
-                # 🔥 基础但关键的状态检查
-                page_status = await self.adapter.execute_script(self.tab_id, '''
-                (() => {
-                    try {
-                        return {
-                            readyState: document.readyState,
-                            hasBody: !!document.body,
-                            hasHead: !!document.head,
-                            url: window.location.href,
-                            isBlank: window.location.href === 'about:blank'
-                        };
-                    } catch (e) {
-                        return { error: e.message };
-                    }
-                })()
-                ''')
-                
-                if (page_status and 
-                    page_status.get('readyState') in ['interactive', 'complete'] and 
-                    page_status.get('hasBody') and
-                    not page_status.get('isBlank')):
-                    
-                    print(f"✅ [{self.tab_id}] 页面基本就绪")
-                    # 🔥 额外等待一点时间确保稳定
-                    await asyncio.sleep(1)
-                    return
-                    
-            except Exception as e:
-                # 🔥 这个阶段的错误是正常的，页面可能还在加载
-                pass
-            
-            await asyncio.sleep(check_interval)
-        
-        print(f"⚠️ [{self.tab_id}] 页面基本就绪等待超时")
+        print(f"✅ [{self.tab_id}] 导航完成")
 
     async def wait_for_url(self, url_pattern: str, timeout: int = 30000, **kwargs) -> None:
         """等待URL匹配"""
@@ -541,16 +437,50 @@ class PlaywrightCompatPage:
                 return []
         except:
             return []
+    def frame_locator(self, selector: str) -> 'PlaywrightCompatFrameLocator':
+        """创建框架定位器"""
+        return PlaywrightCompatFrameLocator(selector, self.tab_id, self.adapter)
+
+class PlaywrightCompatFrameLocator:
+    """兼容 Playwright FrameLocator API - 完整版"""
+    
+    def __init__(self, selector: str, tab_id: str, adapter):
+        self.selector = selector
+        self.tab_id = tab_id
+        self.adapter = adapter
+    
+    @property
+    def first(self) -> 'PlaywrightCompatElement':
+        """获取第一个匹配的框架"""
+        # 对于iframe，我们需要特殊处理
+        if self.selector.lower() == 'iframe':
+            # 返回一个特殊的元素，用于后续在iframe内查找
+            return PlaywrightCompatElement('iframe:first-of-type', self.tab_id, self.adapter, is_iframe=True)
+        else:
+            return PlaywrightCompatElement(f'{self.selector}:first-of-type', self.tab_id, self.adapter)
+    
+    def get_by_role(self, role: str, name: str = None, **kwargs) -> 'PlaywrightCompatElement':
+        """在框架内通过角色查找元素"""
+        if role.lower() == 'img':
+            # 针对你的具体需求：在iframe内查找img
+            iframe_img_selector = f'iframe img'
+        else:
+            iframe_img_selector = f'iframe [role="{role}"]'
+        
+        return PlaywrightCompatElement(iframe_img_selector, self.tab_id, self.adapter, is_iframe_content=True)
+
 
 class PlaywrightCompatElement:
-    """兼容 Playwright Element API"""
+    """兼容 Playwright Element API - 支持iframe"""
     
-    def __init__(self, selector: str, tab_id: str, adapter: MultiAccountBrowserAdapter, is_xpath: bool = False):
+    def __init__(self, selector: str, tab_id: str, adapter, is_xpath: bool = False, is_iframe: bool = False, is_iframe_content: bool = False):
         self.selector = selector
         self.tab_id = tab_id
         self.adapter = adapter
         self.is_xpath = is_xpath
-    
+        self.is_iframe = is_iframe
+        self.is_iframe_content = is_iframe_content
+
     async def click(self, **kwargs) -> None:
         """点击元素"""
         if self.is_xpath:
@@ -630,11 +560,13 @@ class PlaywrightCompatElement:
         return await self.adapter.execute_script(self.tab_id, script)
     
     def nth(self, index: int) -> 'PlaywrightCompatElement':
-        """获取第n个元素 - 修复版本，使用索引而不是 nth-of-type"""
+        """获取第n个元素 - 修复索引计算"""
         if self.is_xpath:
-            nth_selector = f'({self.selector})[{index}]'
+            # XPath 是 1-based，但 Playwright nth() 是 0-based
+            # 所以要 +1 转换
+            nth_selector = f'({self.selector})[{index + 1}]'
         else:
-            # 🔥 关键修复：不使用 nth-of-type，直接用 JavaScript 索引
+            # JavaScript 数组是 0-based，与 Playwright 一致
             nth_selector = f'__INDEX_SELECTOR__{self.selector}__INDEX__{index}'
         
         print(f"🎯 [{self.tab_id}] nth({index}) 生成选择器: {nth_selector}")
@@ -644,49 +576,77 @@ class PlaywrightCompatElement:
         """获取属性值 - 支持索引选择器"""
         
         # 🔥 检查是否是索引选择器
-        if '__INDEX_SELECTOR__' in self.selector:
-            parts = self.selector.split('__INDEX_SELECTOR__')[1].split('__INDEX__')
-            base_selector = parts[0]
-            index = int(parts[1])
-            
+        if self.is_iframe_content:
+            # 特殊处理：在iframe内查找元素
             script = f'''
             (() => {{
                 try {{
-                    const elements = document.querySelectorAll("{base_selector}");
-                    console.log("找到元素数量:", elements.length);
+                    // 查找iframe
+                    const iframe = document.querySelector('iframe');
+                    if (!iframe || !iframe.contentDocument) {{
+                        console.log("iframe not found or not accessible");
+                        return null;
+                    }}
                     
-                    if (elements.length > {index}) {{
-                        const element = elements[{index}];
+                    // 在iframe内查找元素
+                    const element = iframe.contentDocument.querySelector('img');
+                    if (element) {{
                         const value = element.getAttribute("{name}");
-                        console.log("索引", {index}, "元素的", "{name}", "属性:", value);
+                        console.log("iframe内找到元素，{name}属性:", value);
                         return value;
                     }} else {{
-                        console.log("索引", {index}, "超出范围，总数:", elements.length);
+                        console.log("iframe内未找到img元素");
                         return null;
                     }}
                 }} catch (e) {{
-                    console.error("索引选择器错误:", e);
+                    console.error("iframe访问错误:", e);
                     return null;
                 }}
             }})()
             '''
         else:
-            # 原有的选择器逻辑
-            script = f'''
-            (() => {{
-                try {{
-                    const element = document.querySelector("{self.selector}");
-                    return element ? element.getAttribute("{name}") : null;
-                }} catch (e) {{
-                    return null;
-                }}
-            }})()
-            '''
+            if '__INDEX_SELECTOR__' in self.selector:
+                parts = self.selector.split('__INDEX_SELECTOR__')[1].split('__INDEX__')
+                base_selector = parts[0]
+                index = int(parts[1])
+                
+                script = f'''
+                (() => {{
+                    try {{
+                        const elements = document.querySelectorAll("{base_selector}");
+                        console.log("找到元素数量:", elements.length);
+                        
+                        if (elements.length > {index}) {{
+                            const element = elements[{index}];  // 这里直接使用 index，因为是 0-based
+                            const value = element.getAttribute("{name}");
+                            console.log("索引", {index}, "元素的", "{name}", "属性:", value);
+                            return value;
+                        }} else {{
+                            console.log("索引", {index}, "超出范围，总数:", elements.length);
+                            return null;
+                        }}
+                    }} catch (e) {{
+                        console.error("索引选择器错误:", e);
+                        return null;
+                    }}
+                }})()
+                '''
+            else:
+                # 原有的选择器逻辑
+                script = f'''
+                (() => {{
+                    try {{
+                        const element = document.querySelector("{self.selector}");
+                        return element ? element.getAttribute("{name}") : null;
+                    }} catch (e) {{
+                        return null;
+                    }}
+                }})()
+                '''
         
         try:
             result = await self.adapter.execute_script(self.tab_id, script)
             if result and result.strip():
-                #print(f"✅ [{self.tab_id}] 成功获取属性 '{name}': {result[:50]}...")
                 return result
             else:
                 print(f"⚠️ [{self.tab_id}] 属性 '{name}' 为空或null")
@@ -694,6 +654,7 @@ class PlaywrightCompatElement:
         except Exception as e:
             print(f"❌ [{self.tab_id}] 获取属性失败: {e}")
             return ""
+            
     async def is_visible(self) -> bool:
         """检查元素是否可见"""
         if self.is_xpath:
@@ -741,7 +702,35 @@ class PlaywrightCompatElement:
                 filtered_selector = f'{self.selector}:contains("{has_text}")'
             return PlaywrightCompatElement(filtered_selector, self.tab_id, self.adapter, self.is_xpath)
         return self
-    
+
+    def get_by_role(self, role: str, name: str = None, **kwargs) -> 'PlaywrightCompatElement':
+        """通过角色查找子元素"""
+        if name:
+            sub_selector = f'[role="{role}"][aria-label*="{name}"], [role="{role}"]'
+        else:
+            if role.lower() == 'img':
+                sub_selector = 'img'
+            else:
+                sub_selector = f'[role="{role}"], {role}'
+        
+        # 组合选择器：在当前元素内查找
+        if self.is_xpath:
+            combined_selector = f'{self.selector}//{sub_selector}'
+            return PlaywrightCompatElement(combined_selector, self.tab_id, self.adapter, is_xpath=True)
+        else:
+            combined_selector = f'{self.selector} {sub_selector}'
+            return PlaywrightCompatElement(combined_selector, self.tab_id, self.adapter)
+
+    def get_by_text(self, text: str, **kwargs) -> 'PlaywrightCompatElement':
+        """通过文本查找子元素"""
+        if self.is_xpath:
+            xpath_selector = f'{self.selector}//*[contains(text(), "{text}")]'
+            return PlaywrightCompatElement(xpath_selector, self.tab_id, self.adapter, is_xpath=True)
+        else:
+            # CSS选择器不能直接按文本查找，需要用JavaScript
+            combined_selector = f'{self.selector}__TEXT_SEARCH__{text}'
+            return PlaywrightCompatElement(combined_selector, self.tab_id, self.adapter)
+
     @property
     def first(self) -> 'PlaywrightCompatElement':
         """第一个元素"""
@@ -810,49 +799,86 @@ class PlaywrightCompatContext:
         self._pages = []
         self._init_scripts = []  # 存储初始化脚本
 
-    async def add_init_script(self, script: str = None, path: str = None) -> 'PlaywrightCompatContext':
-        """
-        添加初始化脚本 - 模拟 Playwright 的 Context 级别脚本注册
-        注意：这里只是注册脚本，不执行！
-        """
+    async def add_init_script(self, script: str = None, path: str = None, **kwargs) -> 'PlaywrightCompatContext':
+        """添加初始化脚本 - 极简版本"""
+        
+        # 处理参数
+        if isinstance(script, dict):
+            if 'path' in script:
+                path = script['path']
+                script = None
+            elif 'content' in script:
+                script = script['content']
+        
+        # 获取脚本内容
         if path:
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     script_content = f.read()
+                print(f"📜 从文件加载初始化脚本: {path}")
             except Exception as e:
                 print(f"⚠️ 读取脚本文件失败: {path}, {e}")
                 return self
         elif script:
             script_content = script
+            print(f"📜 注册内联初始化脚本")
         else:
-            print("⚠️ add_init_script: 未提供脚本内容或路径")
+            print("⚠️ addInitScript: 未提供脚本内容")
             return self
         
-        # 🔥 关键：只注册脚本，不立即执行
+        # 🔥 关键简化：直接存储脚本，在 newPage 时应用
         self._init_scripts.append(script_content)
-        print(f"📜 初始化脚本已注册到 Context: {len(script_content)} 字符")
+        print(f"✅ 初始化脚本已注册 (总计: {len(self._init_scripts)} 个)")
         
-        return self  # 返回 self 保持链式调用
-    
-    async def new_page(self) -> PlaywrightCompatPage:
-        """创建新页面 - 传递初始化脚本给页面"""
+        return self
+
+    async def new_page(self) -> 'PlaywrightCompatPage':
+        """创建新页面 - 🔥 极简化，使用 multi-account-browser 原生能力"""
+        
+        print(f"\n🎯 Context.newPage() - 创建页面")
+        
+        # 1. 获取或创建标签页
         if self.storage_state:
             tab_id = await self.tab_manager.get_or_create_account_tab(self.storage_state)
         else:
             tab_id = await self.tab_manager.create_temp_blank_tab()
         
-        # 🔥 关键：将 Context 级别的脚本传递给页面
+        # 2. 🔥 核心简化：直接调用 multi-account-browser 的 addInitScript API
+        if self._init_scripts:
+            await self._apply_init_scripts_to_tab(tab_id)
+        
+        # 3. 创建页面对象
         page = PlaywrightCompatPage(
             tab_id=tab_id, 
             tab_manager=self.tab_manager, 
-            storage_state=self.storage_state,
-            init_scripts=self._init_scripts.copy()  # 传递脚本副本
+            storage_state=self.storage_state
         )
         self._pages.append(page)
         
-        print(f"📄 [{tab_id}] 页面创建完成，已继承 {len(self._init_scripts)} 个初始化脚本")
-        
+        print(f"✅ [{tab_id}] 页面创建完成")
         return page
+
+    async def _apply_init_scripts_to_tab(self, tab_id: str) -> None:
+        """应用初始化脚本到标签页 - 🔥 直接使用 multi-account-browser API"""
+        
+        print(f"📜 [{tab_id}] 应用 {len(self._init_scripts)} 个初始化脚本")
+        
+        for i, script_content in enumerate(self._init_scripts):
+            try:
+                # 🔥 关键：直接调用 multi-account-browser 的原生 API
+                result = self.tab_manager.get_adapter()._make_request('POST', '/account/add-init-script', {
+                    "tabId": tab_id,
+                    "script": script_content
+                })
+                
+                if result.get("success"):
+                    print(f"✅ [{tab_id}] 脚本 {i+1} 应用成功")
+                else:
+                    print(f"❌ [{tab_id}] 脚本 {i+1} 应用失败: {result.get('error')}")
+                    
+            except Exception as e:
+                print(f"❌ [{tab_id}] 脚本 {i+1} 应用异常: {e}")
+
     async def storage_state(self, path: str = None) -> Dict:
         """保存存储状态"""
         if path and self._pages:
@@ -877,16 +903,16 @@ class PlaywrightCompatBrowser:
     """兼容 Playwright Browser API - 简化为标签页工厂"""
     
     def __init__(self):
-        self.tab_manager = AccountTabManager.get_instance()
+        from utils.playwright_compat import get_account_tab_manager
+        self.tab_manager = get_account_tab_manager()
         self._contexts = []
         print(f"🚀 浏览器实例创建完成 (multi-account-browser 模式)")
     
-    async def new_context(self, storage_state: str = None, **kwargs) -> PlaywrightCompatContext:
+    async def new_context(self, storage_state: str = None, **kwargs) -> 'PlaywrightCompatContext':
         """创建新上下文"""
         print(f"\n🎯 Browser.new_context() - 准备账号上下文")
         print(f"   storage_state: {storage_state}")
         
-        # 🔥 修复：只传递 storage_state，忽略其他参数
         context = PlaywrightCompatContext(storage_state)
         self._contexts.append(context)
         return context
@@ -896,20 +922,16 @@ class PlaywrightCompatChromium:
     """兼容 Playwright Chromium API"""
     
     async def launch(self, headless: bool = True, executable_path: str = None, **kwargs) -> PlaywrightCompatBrowser:
-        """
-        启动浏览器 - 核心变化！
-        这里不再启动新的Chrome进程，而是使用multi-account-browser的标签页
-        """
+        """启动浏览器"""
         print(f"\n🚀 Chromium.launch() - multi-account-browser 模式")
         print(f"   headless: {headless} (忽略，使用 multi-account-browser)")
-        print(f"   executable_path: {executable_path} (忽略)")
         
         # 检查 multi-account-browser 是否可用
-        tab_manager = AccountTabManager.get_instance()
+        from utils.playwright_compat import get_account_tab_manager
+        tab_manager = get_account_tab_manager()
         adapter = tab_manager.get_adapter()
         
         try:
-            # 简单的健康检查
             result = adapter._make_request('GET', '/health')
             if result.get('success'):
                 print(f"✅ multi-account-browser 连接成功")
@@ -917,7 +939,6 @@ class PlaywrightCompatChromium:
                 print(f"⚠️ multi-account-browser 连接异常")
         except Exception as e:
             print(f"❌ multi-account-browser 连接失败: {e}")
-            print(f"   请确保 multi-account-browser 正在运行 (http://localhost:3000)")
             raise Exception("multi-account-browser 不可用")
         
         return PlaywrightCompatBrowser()
@@ -933,14 +954,17 @@ class PlaywrightCompatPlaywright:
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
-
+        """异步上下文管理器出口"""
+        print("🛑 PlaywrightCompat 上下文管理器关闭")   
+        if exc_type:
+            print(f"⚠️ PlaywrightCompat 上下文中发生异常: {exc_type.__name__}: {exc_val}")
+        return False
 
 # ========================================
 # 替换函数
 # ========================================
 
-async def async_playwright_compat() -> PlaywrightCompatPlaywright:
+def async_playwright_compat() -> PlaywrightCompatPlaywright:
     """
     替换原来的 async_playwright() 函数
     

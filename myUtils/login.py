@@ -15,7 +15,7 @@ async def douyin_cookie_gen(id,status_queue):
         # 检查是否是主框架的变化
         if page.url != original_url:
             url_changed_event.set()
-    async with (await async_playwright()) as playwright:
+    async with async_playwright() as playwright:
         options = {
             'headless': False
         }
@@ -79,7 +79,7 @@ async def get_tencent_cookie(id,status_queue):
         if page.url != original_url:
             url_changed_event.set()
 
-    async with (await async_playwright()) as playwright:
+    async with async_playwright() as playwright:
         options = {
             'args': [
                 '--lang en-GB'
@@ -153,7 +153,7 @@ async def get_ks_cookie(id,status_queue):
         # 检查是否是主框架的变化
         if page.url != original_url:
             url_changed_event.set()
-    async with (await async_playwright()) as playwright:
+    async with async_playwright() as playwright:
         options = {
             'args': [
                 '--lang en-GB'
@@ -226,7 +226,7 @@ async def xiaohongshu_cookie_gen(id,status_queue):
         if page.url != original_url:
             url_changed_event.set()
 
-    async with (await async_playwright()) as playwright:
+    async with async_playwright() as playwright:
         options = {
             'args': [
                 '--lang en-GB'
@@ -243,11 +243,10 @@ async def xiaohongshu_cookie_gen(id,status_queue):
         await page.goto("https://creator.xiaohongshu.com/")
         await page.locator('img.css-wemwzq').click()
 
-        img_locator = page.get_by_role("img").nth(2)
+        img_locator = page.get_by_role("img").nth(1)
         # 获取 src 属性值
         src = await img_locator.get_attribute("src")
         original_url = page.url
-        print("✅ 图片地址:", src)
         status_queue.put(src)
         
         # 监听页面的 'framenavigated' 事件，只关注主框架的变化
