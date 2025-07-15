@@ -223,47 +223,285 @@ class AccountTabManager:
 class PlaywrightCompatPage:
     """兼容 Playwright Page API"""
     
-    def __init__(self, tab_id: str, tab_manager: AccountTabManager, storage_state: str = None):
+    def __init__(self, tab_id: str, tab_manager: AccountTabManager, storage_state: str = None, init_scripts: str = None):
         self.tab_id = tab_id
         self.tab_manager = tab_manager
         self.adapter = tab_manager.get_adapter()
         self.storage_state = storage_state
+        self.init_scripts = init_scripts
         self._url = ""
+        self.init_scripts = init_scripts or []  # 从 Context 继承的脚本
+        self._navigation_count = 0  # 🔥 导航计数器
+        self._scripts_injected = False  # 🔥 脚本注入状态标记
+        self._event_listeners = {}  # 🔥 新增：事件监听器存储
+        self.main_frame = self
+
+    def on(self, event: str, handler) -> None:
+        """添加事件监听器 - 兼容 Playwright API"""
+        if event not in self._event_listeners:
+            self._event_listeners[event] = []
+        self._event_listeners[event].append(handler)
+        print(f"📡 [{self.tab_id}] 添加事件监听器: {event}")
+        
+        # 🔥 对于 framenavigated 事件，我们需要启动 URL 监控
+        if event == 'framenavigated':
+            asyncio.create_task(self._start_url_monitoring())
     
+    async def _start_url_monitoring(self) -> None:
+        """启动 URL 变化监控"""
+        print(f"🔍 [{self.tab_id}] 启动 URL 变化监控")
+        
+        current_url = self._url
+        check_interval = 1  # 每秒检查一次
+        
+        while True:
+            try:
+                # 获取当前页面 URL
+                new_url = await self.adapter.execute_script(self.tab_id, 'window.location.href')
+                
+                if new_url and new_url != current_url:
+                    print(f"🔄 [{self.tab_id}] URL 变化: {current_url} -> {new_url}")
+                    
+                    # 触发 framenavigated 事件
+                    if 'framenavigated' in self._event_listeners:
+                        for handler in self._event_listeners['framenavigated']:
+                            try:
+                                # 创建模拟的 frame 对象
+                                mock_frame = type('MockFrame', (), {
+                                    'url': new_url,
+                                    'name': 'main'
+                                })()
+                                
+                                # 调用处理器
+                                if asyncio.iscoroutinefunction(handler):
+                                    await handler(mock_frame)
+                                else:
+                                    handler(mock_frame)
+                            except Exception as e:
+                                print(f"⚠️ [{self.tab_id}] 事件处理器执行失败: {e}")
+                    
+                    current_url = new_url
+                    self._url = new_url
+                
+                await asyncio.sleep(check_interval)
+                
+            except Exception as e:
+                print(f"⚠️ [{self.tab_id}] URL 监控异常: {e}")
+                await asyncio.sleep(check_interval)
     async def goto(self, url: str, **kwargs) -> None:
-        """导航到指定URL"""
-        print(f"🔗 [{self.tab_id}] 导航到: {url}")
+        """导航到指定URL - 简化版本"""
+        print(f"🔗 [{self.tab_id}] 导航到: {url} (第 {self._navigation_count + 1} 次导航)")
+        
+        self._navigation_count += 1
+        
+        # 在首次导航前处理初始化脚本
+        if self.init_scripts and self._navigation_count == 1 and not self._scripts_injected:
+            await self._register_init_scripts_before_first_navigation()
+        
+        # 执行导航
         await self.adapter.navigate_to_url(self.tab_id, url)
         self._url = url
+        
+        # 等待页面加载完成
+        await self._wait_for_page_ready()
+        
+        # 确保脚本在页面加载后执行（备用保障）
+        if hasattr(self, '_fallback_scripts_needed') and self._fallback_scripts_needed:
+            await self._inject_fallback_scripts()
+            self._fallback_scripts_needed = False  # 执行后清除标记
     
-    async def wait_for_selector(self, selector: str, timeout: int = 30000, **kwargs) -> 'PlaywrightCompatElement':
-        """等待元素出现"""
-        timeout_seconds = timeout / 1000
+
+    async def _register_init_scripts_before_first_navigation(self) -> None:
+        """在首次导航前注册初始化脚本"""
+        print(f"📜 [{self.tab_id}] 首次导航前准备 {len(self.init_scripts)} 个初始化脚本")
         
-        script = f"""
-        new Promise((resolve, reject) => {{
-            const timeout = setTimeout(() => {{
-                reject(new Error('等待元素超时: {selector}'));
-            }}, {timeout});
-            
-            function checkElement() {{
-                const element = document.querySelector('{selector}');
-                if (element) {{
-                    clearTimeout(timeout);
-                    resolve(true);
-                }} else {{
-                    setTimeout(checkElement, 500);
-                }}
-            }}
-            checkElement();
-        }})
-        """
+        self._scripts_injected = True
         
+        # 🔥 关键修改：由于 multi-account-browser 不支持 add-init-script API
+        # 直接标记使用备用方案
+        print(f"📋 [{self.tab_id}] multi-account-browser 不支持 add-init-script API，使用备用方案")
+        self._fallback_scripts_needed = True
+        
+        # 🔥 或者，我们可以尝试其他方式，比如在导航前立即执行脚本
+        # 这样可以在页面内容加载前执行，接近原始的 init-script 效果
+        if True:  # 尝试预执行方案
+            await self._pre_execute_init_scripts()
+
+    async def _pre_execute_init_scripts(self) -> None:
+        """预执行初始化脚本 - 在导航前执行"""
+        print(f"🚀 [{self.tab_id}] 在导航前预执行 {len(self.init_scripts)} 个初始化脚本")
+        
+        for i, script_content in enumerate(self.init_scripts):
+            try:
+                # 🔥 关键：包装脚本，使其能在任何环境下安全执行
+                pre_execute_script = f'''
+                (function() {{
+                    try {{
+                        console.log("预执行初始化脚本 {i+1}...");
+                        
+                        // 如果当前页面是 about:blank，设置一些基本的全局变量
+                        if (window.location.href === 'about:blank') {{
+                            console.log("在空白页面设置初始化脚本...");
+                            // 将脚本保存到全局变量，等页面加载时执行
+                            window.__initScripts = window.__initScripts || [];
+                            window.__initScripts.push(function() {{
+                                {script_content}
+                            }});
+                            return "queued";
+                        }} else {{
+                            // 如果已经有页面内容，直接执行
+                            console.log("直接执行初始化脚本...");
+                            {script_content}
+                            return "executed";
+                        }}
+                    }} catch (e) {{
+                        console.error("预执行脚本失败:", e.message);
+                        return "failed";
+                    }}
+                }})();
+                '''
+                
+                result = await self.adapter.execute_script(self.tab_id, pre_execute_script)
+                print(f"✅ [{self.tab_id}] 预执行脚本 {i+1} 结果: {result}")
+                
+            except Exception as e:
+                print(f"⚠️ [{self.tab_id}] 预执行脚本 {i+1} 失败: {e}")
+    
+        # 设置页面加载监听器，确保脚本在新页面加载时也能执行
+        await self._setup_script_execution_listener()
+
+    async def _setup_script_execution_listener(self) -> None:
+        """设置脚本执行监听器"""
         try:
-            await self.adapter.execute_script(self.tab_id, script)
-            return PlaywrightCompatElement(selector, self.tab_id, self.adapter)
+            listener_script = '''
+            (function() {
+                console.log("设置初始化脚本监听器...");
+                
+                // 监听页面加载事件
+                function executeQueuedScripts() {
+                    if (window.__initScripts && window.__initScripts.length > 0) {
+                        console.log("执行队列中的初始化脚本:", window.__initScripts.length);
+                        window.__initScripts.forEach(function(scriptFunc, index) {
+                            try {
+                                scriptFunc();
+                                console.log("队列脚本", index + 1, "执行成功");
+                            } catch (e) {
+                                console.error("队列脚本", index + 1, "执行失败:", e);
+                            }
+                        });
+                        // 清空队列
+                        window.__initScripts = [];
+                    }
+                }
+                
+                // 如果 DOM 已经加载，立即执行
+                if (document.readyState !== 'loading') {
+                    executeQueuedScripts();
+                }
+                
+                // 监听 DOM 加载完成
+                document.addEventListener('DOMContentLoaded', executeQueuedScripts);
+                
+                // 监听页面完全加载
+                window.addEventListener('load', executeQueuedScripts);
+                
+                return "listener_set";
+            })();
+            '''
+            
+            result = await self.adapter.execute_script(self.tab_id, listener_script)
+            print(f"✅ [{self.tab_id}] 脚本监听器设置结果: {result}")
+            
         except Exception as e:
-            raise TimeoutError(f"等待元素超时: {selector}")
+            print(f"⚠️ [{self.tab_id}] 设置脚本监听器失败: {e}")
+
+    async def _inject_fallback_scripts(self) -> None:
+        """备用方案：导航后立即注入脚本"""
+        print(f"🔧 [{self.tab_id}] 使用备用方案注入 {len(self.init_scripts)} 个脚本")
+        
+        for i, script_content in enumerate(self.init_scripts):
+            try:
+                # 包装脚本以提高成功率
+                safe_script = f'''
+                (function() {{
+                    try {{
+                        console.log("执行备用初始化脚本 {i+1}...");
+                        
+                        // 等待 DOM 基本就绪
+                        if (document.readyState === 'loading') {{
+                            console.log("DOM 仍在加载，延迟执行脚本...");
+                            setTimeout(function() {{
+                                try {{
+                                    {script_content}
+                                    console.log("延迟执行的初始化脚本完成");
+                                }} catch (e) {{
+                                    console.error("延迟执行脚本失败:", e);
+                                }}
+                            }}, 1000);
+                        }} else {{
+                            console.log("立即执行初始化脚本...");
+                            {script_content}
+                            console.log("立即执行的初始化脚本完成");
+                        }}
+                        return true;
+                    }} catch (e) {{
+                        console.error("备用脚本执行失败:", e.message);
+                        console.error("错误堆栈:", e.stack);
+                        return false;
+                    }}
+                }})();
+                '''
+                
+                result = await self.adapter.execute_script(self.tab_id, safe_script)
+                print(f"✅ [{self.tab_id}] 备用脚本 {i+1} 执行结果: {result}")
+                
+            except Exception as e:
+                print(f"❌ [{self.tab_id}] 备用脚本 {i+1} 执行失败: {e}")
+        
+        # 清除标记
+        self._fallback_scripts_needed = False
+    
+    async def _wait_for_page_ready(self) -> None:
+        """等待页面就绪 - 保持原有逻辑"""
+        print(f"⏳ [{self.tab_id}] 等待页面加载完成...")
+        
+        max_wait_time = 10  # 减少等待时间
+        check_interval = 0.5
+        start_time = asyncio.get_event_loop().time()
+        
+        while (asyncio.get_event_loop().time() - start_time) < max_wait_time:
+            try:
+                page_status = await self.adapter.execute_script(self.tab_id, '''
+                (function() {
+                    try {
+                        return {
+                            readyState: document.readyState,
+                            hasBody: !!document.body,
+                            url: window.location.href,
+                            bodyChildren: document.body ? document.body.children.length : 0
+                        };
+                    } catch (e) {
+                        return { error: e.message, readyState: 'loading' };
+                    }
+                })()
+                ''')
+                
+                if page_status:
+                    ready_state = page_status.get('readyState')
+                    has_body = page_status.get('hasBody', False)
+                    body_children = page_status.get('bodyChildren', 0)
+                    
+                    if (ready_state in ['interactive', 'complete'] and 
+                        has_body and body_children > 0):
+                        print(f"✅ [{self.tab_id}] 页面加载完成")
+                        return
+                
+            except Exception as e:
+                print(f"⚠️ [{self.tab_id}] 页面状态检查失败: {e}")
+            
+            await asyncio.sleep(check_interval)
+        
+        print(f"⚠️ [{self.tab_id}] 页面加载等待超时，继续执行")
     
     async def wait_for_url(self, url_pattern: str, timeout: int = 30000, **kwargs) -> None:
         """等待URL匹配"""
@@ -293,11 +531,17 @@ class PlaywrightCompatPage:
     def get_by_role(self, role: str, name: str = None, **kwargs) -> 'PlaywrightCompatElement':
         """通过角色查找元素"""
         if name:
-            selector = f'[role="{role}"][aria-label*="{name}"], [role="{role}"]:contains("{name}"), {role}:contains("{name}")'
+            selector = f'[role="{role}"][aria-label*="{name}"], [role="{role}"]'
         else:
-            selector = f'[role="{role}"], {role}'
+            if role.lower() == 'img':
+                selector = 'img'  # 🔥 简化：直接使用 img 标签
+            else:
+                selector = f'[role="{role}"], {role}'
+        
+        print(f"🎯 [{self.tab_id}] get_by_role 生成选择器: {selector}")
         return PlaywrightCompatElement(selector, self.tab_id, self.adapter)
-    
+
+
     async def screenshot(self, path: str = None, **kwargs) -> bytes:
         """截图"""
         try:
@@ -422,9 +666,9 @@ class PlaywrightCompatElement:
             if (element) element.click();
             else throw new Error("元素未找到: {self.selector}");
             '''
-        
         await self.adapter.execute_script(self.tab_id, script)
-    
+        await asyncio.sleep(3)
+
     async def fill(self, value: str, **kwargs) -> None:
         """填充输入"""
         escaped_value = value.replace('"', '\\"').replace('\n', '\\n')
@@ -485,19 +729,71 @@ class PlaywrightCompatElement:
         
         return await self.adapter.execute_script(self.tab_id, script)
     
-    async def get_attribute(self, name: str) -> str:
-        """获取属性值"""
+    def nth(self, index: int) -> 'PlaywrightCompatElement':
+        """获取第n个元素 - 修复版本，使用索引而不是 nth-of-type"""
         if self.is_xpath:
+            nth_selector = f'({self.selector})[{index + 1}]'
+        else:
+            # 🔥 关键修复：不使用 nth-of-type，直接用 JavaScript 索引
+            nth_selector = f'__INDEX_SELECTOR__{self.selector}__INDEX__{index}'
+        
+        print(f"🎯 [{self.tab_id}] nth({index}) 生成选择器: {nth_selector}")
+        return PlaywrightCompatElement(nth_selector, self.tab_id, self.adapter, self.is_xpath)
+
+    async def get_attribute(self, name: str) -> str:
+        """获取属性值 - 支持索引选择器"""
+        
+        # 🔥 检查是否是索引选择器
+        if '__INDEX_SELECTOR__' in self.selector:
+            parts = self.selector.split('__INDEX_SELECTOR__')[1].split('__INDEX__')
+            base_selector = parts[0]
+            index = int(parts[1])
+            
             script = f'''
-            const xpath = "{self.selector}";
-            const element = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-            return element ? element.getAttribute("{name}") : null;
+            (() => {{
+                try {{
+                    const elements = document.querySelectorAll("{base_selector}");
+                    console.log("找到元素数量:", elements.length);
+                    
+                    if (elements.length > {index}) {{
+                        const element = elements[{index}];
+                        const value = element.getAttribute("{name}");
+                        console.log("索引", {index}, "元素的", "{name}", "属性:", value);
+                        return value;
+                    }} else {{
+                        console.log("索引", {index}, "超出范围，总数:", elements.length);
+                        return null;
+                    }}
+                }} catch (e) {{
+                    console.error("索引选择器错误:", e);
+                    return null;
+                }}
+            }})()
             '''
         else:
-            script = f'document.querySelector("{self.selector}")?.getAttribute("{name}")'
+            # 原有的选择器逻辑
+            script = f'''
+            (() => {{
+                try {{
+                    const element = document.querySelector("{self.selector}");
+                    return element ? element.getAttribute("{name}") : null;
+                }} catch (e) {{
+                    return null;
+                }}
+            }})()
+            '''
         
-        return await self.adapter.execute_script(self.tab_id, script)
-    
+        try:
+            result = await self.adapter.execute_script(self.tab_id, script)
+            if result and result.strip():
+                print(f"✅ [{self.tab_id}] 成功获取属性 '{name}': {result[:50]}...")
+                return result
+            else:
+                print(f"⚠️ [{self.tab_id}] 属性 '{name}' 为空或null")
+                return ""
+        except Exception as e:
+            print(f"❌ [{self.tab_id}] 获取属性失败: {e}")
+            return ""
     async def is_visible(self) -> bool:
         """检查元素是否可见"""
         if self.is_xpath:
@@ -545,14 +841,6 @@ class PlaywrightCompatElement:
                 filtered_selector = f'{self.selector}:contains("{has_text}")'
             return PlaywrightCompatElement(filtered_selector, self.tab_id, self.adapter, self.is_xpath)
         return self
-    
-    def nth(self, index: int) -> 'PlaywrightCompatElement':
-        """获取第n个元素"""
-        if self.is_xpath:
-            nth_selector = f'({self.selector})[{index + 1}]'
-        else:
-            nth_selector = f'{self.selector}:nth-child({index + 1})'
-        return PlaywrightCompatElement(nth_selector, self.tab_id, self.adapter, self.is_xpath)
     
     @property
     def first(self) -> 'PlaywrightCompatElement':
@@ -620,19 +908,51 @@ class PlaywrightCompatContext:
         self.storage_state = storage_state
         self.tab_manager = AccountTabManager.get_instance()
         self._pages = []
+        self._init_scripts = []  # 存储初始化脚本
+
+    async def add_init_script(self, script: str = None, path: str = None) -> 'PlaywrightCompatContext':
+        """
+        添加初始化脚本 - 模拟 Playwright 的 Context 级别脚本注册
+        注意：这里只是注册脚本，不执行！
+        """
+        if path:
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    script_content = f.read()
+            except Exception as e:
+                print(f"⚠️ 读取脚本文件失败: {path}, {e}")
+                return self
+        elif script:
+            script_content = script
+        else:
+            print("⚠️ add_init_script: 未提供脚本内容或路径")
+            return self
+        
+        # 🔥 关键：只注册脚本，不立即执行
+        self._init_scripts.append(script_content)
+        print(f"📜 初始化脚本已注册到 Context: {len(script_content)} 字符")
+        
+        return self  # 返回 self 保持链式调用
     
     async def new_page(self) -> PlaywrightCompatPage:
+        """创建新页面 - 传递初始化脚本给页面"""
         if self.storage_state:
-            # 现有账号：使用 storage_state
             tab_id = await self.tab_manager.get_or_create_account_tab(self.storage_state)
         else:
-            # 🔥 新账号：创建空白标签页，不指定平台
             tab_id = await self.tab_manager.create_temp_blank_tab()
         
-        page = PlaywrightCompatPage(tab_id, self.tab_manager, self.storage_state)
+        # 🔥 关键：将 Context 级别的脚本传递给页面
+        page = PlaywrightCompatPage(
+            tab_id=tab_id, 
+            tab_manager=self.tab_manager, 
+            storage_state=self.storage_state,
+            init_scripts=self._init_scripts.copy()  # 传递脚本副本
+        )
         self._pages.append(page)
+        
+        print(f"📄 [{tab_id}] 页面创建完成，已继承 {len(self._init_scripts)} 个初始化脚本")
+        
         return page
-    
     async def storage_state(self, path: str = None) -> Dict:
         """保存存储状态"""
         if path and self._pages:
@@ -640,7 +960,7 @@ class PlaywrightCompatContext:
             page = self._pages[0]
             await self.tab_manager.save_account_state(path, page.tab_id)
         return {}
-    
+
     async def close(self) -> None:
         """关闭上下文 - 在标签页复用模式下，这里不关闭标签页"""
         print(f"📝 Context.close() - 保留标签页以供复用")

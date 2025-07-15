@@ -345,7 +345,7 @@ class MultiAccountBrowserAdapter:
         url = f"{self.api_base_url}{endpoint}"
         
         try:
-            timeout = 60 if '/set-file' in endpoint else 30
+            timeout = 120 if '/set-file' in endpoint else 60
             
             if method.upper() == 'GET':
                 response = self.session.get(url, timeout=timeout)
