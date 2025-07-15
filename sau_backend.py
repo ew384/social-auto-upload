@@ -953,6 +953,9 @@ def sse_stream(status_queue):
         if not status_queue.empty():
             msg = status_queue.get()
             yield f"data: {msg}\n\n"
+            if msg == "200" or msg == "500":
+                print(f"✅ SSE 发送完成状态: {msg}")
+                break
         else:
             # 避免 CPU 占满
             time.sleep(0.1)

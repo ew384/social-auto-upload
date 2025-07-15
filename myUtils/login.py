@@ -31,7 +31,7 @@ async def douyin_cookie_gen(id,status_queue):
         img_locator = page.get_by_role("img", name="二维码")
         # 获取 src 属性值
         src = await img_locator.get_attribute("src")
-        print("✅ 图片地址:", src)
+        #print("✅ 图片地址:", src)
         status_queue.put(src)
         # 监听页面的 'framenavigated' 事件，只关注主框架的变化
         page.on('framenavigated',
@@ -49,7 +49,7 @@ async def douyin_cookie_gen(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        await context.save_storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
         result = await check_cookie(3, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
@@ -108,7 +108,7 @@ async def get_tencent_cookie(id,status_queue):
 
         # 获取 src 属性值
         src = await img_locator.get_attribute("src")
-        print("✅ 图片地址:", src)
+        #print("✅ 图片地址:", src)
         status_queue.put(src)
 
         try:
@@ -124,7 +124,7 @@ async def get_tencent_cookie(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        await context.save_storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
         result = await check_cookie(2,f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
@@ -195,17 +195,17 @@ async def get_ks_cookie(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        await context.save_storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
         result = await check_cookie(4, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
             await page.close()
             await context.close()
-            await browser.close()
+            #await browser.close()
             return None
         await page.close()
         await context.close()
-        await browser.close()
+        #await browser.close()
 
         with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
             cursor = conn.cursor()
@@ -266,7 +266,7 @@ async def xiaohongshu_cookie_gen(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        await context.save_storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
         result = await check_cookie(1, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")

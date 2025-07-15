@@ -219,7 +219,17 @@ class AccountTabManager:
 # ========================================
 # Playwright 兼容层
 # ========================================
-
+class MainFrame:
+    """主框架对象 - 更简单的实现"""
+    
+    def __init__(self, page):
+        self.url = ""
+        self.name = "main"
+        self._page = page
+    
+    def __eq__(self, other):
+        # 🔥 确保 frame == page.main_frame 返回 True
+        return other is self
 class PlaywrightCompatPage:
     """兼容 Playwright Page API"""
     
@@ -230,61 +240,51 @@ class PlaywrightCompatPage:
         self.storage_state = storage_state
         self._url = ""
         self._event_listeners = {}  # 🔥 新增：事件监听器存储
-        self.main_frame = self
+        self.main_frame = MainFrame(self)
+        self._monitoring_task = None
 
     def on(self, event: str, handler) -> None:
-        """添加事件监听器 - 兼容 Playwright API"""
         if event not in self._event_listeners:
             self._event_listeners[event] = []
         self._event_listeners[event].append(handler)
-        print(f"📡 [{self.tab_id}] 添加事件监听器: {event}")
         
-        # 🔥 对于 framenavigated 事件，我们需要启动 URL 监控
-        if event == 'framenavigated':
-            asyncio.create_task(self._start_url_monitoring())
-    
+        # 🔥 如果是 framenavigated 事件且还没有监控任务，就启动监控
+        if event == 'framenavigated' and not self._monitoring_task:
+            self._monitoring_task = asyncio.create_task(self._start_url_monitoring())
+
     async def _start_url_monitoring(self) -> None:
-        """启动 URL 变化监控"""
+        """URL 变化监控 - 简化版本"""
         print(f"🔍 [{self.tab_id}] 启动 URL 变化监控")
         
         current_url = self._url
-        check_interval = 1  # 每秒检查一次
         
-        while True:
+        while True:  # 🔥 简化：不需要额外的停止条件
             try:
-                # 获取当前页面 URL
                 new_url = await self.adapter.execute_script(self.tab_id, 'window.location.href')
                 
                 if new_url and new_url != current_url:
                     print(f"🔄 [{self.tab_id}] URL 变化: {current_url} -> {new_url}")
                     
-                    # 触发 framenavigated 事件
+                    current_url = new_url
+                    self._url = new_url
+                    self.main_frame.url = new_url
+                    
+                    # 触发事件
                     if 'framenavigated' in self._event_listeners:
                         for handler in self._event_listeners['framenavigated']:
                             try:
-                                # 创建模拟的 frame 对象
-                                mock_frame = type('MockFrame', (), {
-                                    'url': new_url,
-                                    'name': 'main'
-                                })()
-                                
-                                # 调用处理器
-                                if asyncio.iscoroutinefunction(handler):
-                                    await handler(mock_frame)
-                                else:
-                                    handler(mock_frame)
+                                result = handler(self.main_frame)
+                                if hasattr(result, '__await__'):
+                                    await result
                             except Exception as e:
                                 print(f"⚠️ [{self.tab_id}] 事件处理器执行失败: {e}")
-                    
-                    current_url = new_url
-                    self._url = new_url
                 
-                await asyncio.sleep(check_interval)
+                await asyncio.sleep(0.5)
                 
             except Exception as e:
                 print(f"⚠️ [{self.tab_id}] URL 监控异常: {e}")
-                await asyncio.sleep(check_interval)
-    
+                await asyncio.sleep(0.5)
+
     async def goto(self, url: str, **kwargs) -> None:
         """导航到指定URL - 简化版本，初始化脚本由 multi-account-browser 自动处理"""
         
@@ -574,64 +574,101 @@ class PlaywrightCompatElement:
 
     async def get_attribute(self, name: str) -> str:
         """获取属性值 - 支持索引选择器"""
-        
-        # 🔥 检查是否是索引选择器
-        if self.is_iframe_content:
-            # 特殊处理：在iframe内查找元素
+        # 🔥 检查是否是iframe内容查询
+        if 'iframe' in self.selector and 'img' in self.selector:
+            # 特殊处理：访问iframe内部的元素
             script = f'''
             (() => {{
                 try {{
-                    // 查找iframe
+                    console.log("开始查找iframe内的img元素");
+                    
+                    // 查找页面中的第一个iframe
                     const iframe = document.querySelector('iframe');
-                    if (!iframe || !iframe.contentDocument) {{
-                        console.log("iframe not found or not accessible");
+                    if (!iframe) {{
+                        console.log("页面中没有找到iframe");
                         return null;
                     }}
                     
-                    // 在iframe内查找元素
-                    const element = iframe.contentDocument.querySelector('img');
-                    if (element) {{
-                        const value = element.getAttribute("{name}");
-                        console.log("iframe内找到元素，{name}属性:", value);
-                        return value;
-                    }} else {{
-                        console.log("iframe内未找到img元素");
+                    console.log("找到iframe，尝试访问其内容");
+                    
+                    // 等待iframe加载完成
+                    if (!iframe.contentDocument && !iframe.contentWindow) {{
+                        console.log("iframe还未加载完成");
                         return null;
                     }}
+                    
+                    // 获取iframe的文档
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    if (!iframeDoc) {{
+                        console.log("无法访问iframe文档");
+                        return null;
+                    }}
+                    
+                    // 在iframe内查找img元素
+                    const imgElements = iframeDoc.querySelectorAll('img');
+                    console.log("iframe内找到", imgElements.length, "个img元素");
+                    
+                    if (imgElements.length > 0) {{
+                        const firstImg = imgElements[0];
+                        const srcValue = firstImg.getAttribute("{name}");
+                        console.log("第一个img的{name}属性:", srcValue);
+                        return srcValue;
+                    }} else {{
+                        console.log("iframe内没有找到img元素");
+                        return null;
+                    }}
+                    
                 }} catch (e) {{
-                    console.error("iframe访问错误:", e);
+                    console.error("访问iframe内容时出错:", e);
                     return null;
                 }}
             }})()
             '''
-        else:
-            if '__INDEX_SELECTOR__' in self.selector:
-                parts = self.selector.split('__INDEX_SELECTOR__')[1].split('__INDEX__')
-                base_selector = parts[0]
-                index = int(parts[1])
-                
-                script = f'''
-                (() => {{
-                    try {{
-                        const elements = document.querySelectorAll("{base_selector}");
-                        console.log("找到元素数量:", elements.length);
-                        
-                        if (elements.length > {index}) {{
-                            const element = elements[{index}];  // 这里直接使用 index，因为是 0-based
-                            const value = element.getAttribute("{name}");
-                            console.log("索引", {index}, "元素的", "{name}", "属性:", value);
-                            return value;
-                        }} else {{
-                            console.log("索引", {index}, "超出范围，总数:", elements.length);
-                            return null;
-                        }}
-                    }} catch (e) {{
-                        console.error("索引选择器错误:", e);
+            
+            try:
+                result = await self.adapter.execute_script(self.tab_id, script)
+                if result and result.strip():
+                    print(f"✅ [{self.tab_id}] 成功获取iframe内img的{name}: {result[:50]}...")
+                    return result
+                else:
+                    print(f"⚠️ [{self.tab_id}] iframe内img的{name}属性为空")
+                    return ""
+            except Exception as e:
+                print(f"❌ [{self.tab_id}] 获取iframe内容失败: {e}")
+                return ""
+        
+        # 🔥 检查是否是索引选择器
+        elif '__INDEX_SELECTOR__' in self.selector:
+            # 你现有的索引选择器处理逻辑保持不变
+            parts = self.selector.split('__INDEX_SELECTOR__')[1].split('__INDEX__')
+            base_selector = parts[0]
+            index = int(parts[1])
+            
+            script = f'''
+            (() => {{
+                try {{
+                    const elements = document.querySelectorAll("{base_selector}");
+                    if (elements.length > {index}) {{
+                        const element = elements[{index}];
+                        const value = element.getAttribute("{name}");
+                        return value;
+                    }} else {{
                         return null;
                     }}
-                }})()
-                '''
-            else:
+                }} catch (e) {{
+                    return null;
+                }}
+            }})()
+            '''
+            
+            try:
+                result = await self.adapter.execute_script(self.tab_id, script)
+                return result or ""
+            except Exception as e:
+                print(f"❌ [{self.tab_id}] 获取属性失败: {e}")
+                return ""
+        
+        else:
                 # 原有的选择器逻辑
                 script = f'''
                 (() => {{
@@ -879,13 +916,13 @@ class PlaywrightCompatContext:
             except Exception as e:
                 print(f"❌ [{tab_id}] 脚本 {i+1} 应用异常: {e}")
 
-    async def storage_state(self, path: str = None) -> Dict:
+    async def save_storage_state(self, path: str = None) -> Dict:
         """保存存储状态"""
         if path and self._pages:
             # 保存当前页面对应的账号状态
             page = self._pages[0]
             await self.tab_manager.save_account_state(path, page.tab_id)
-        return {}
+        #return {}
 
     async def close(self) -> None:
         """关闭上下文 - 在标签页复用模式下，这里不关闭标签页"""
