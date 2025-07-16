@@ -26,6 +26,8 @@ async def douyin_cookie_gen(id,status_queue):
         context = await set_init_script(context)
         # Pause the page, and start recording manually.
         page = await context.new_page()
+        if hasattr(page, 'set_login_session'):
+            page.set_login_session(True)
         await page.goto("https://creator.douyin.com/")
         original_url = page.url
         img_locator = page.get_by_role("img", name="二维码")
@@ -93,6 +95,8 @@ async def get_tencent_cookie(id,status_queue):
         # Pause the page, and start recording manually.
         context = await set_init_script(context)
         page = await context.new_page()
+        if hasattr(page, 'set_login_session'):
+            page.set_login_session(True)
         await page.goto("https://channels.weixin.qq.com")
         original_url = page.url
 
@@ -167,6 +171,8 @@ async def get_ks_cookie(id,status_queue):
         context = await set_init_script(context)
         # Pause the page, and start recording manually.
         page = await context.new_page()
+        if hasattr(page, 'set_login_session'):
+            page.set_login_session(True)
         await page.goto("https://cp.kuaishou.com")
 
         # 定位并点击“立即登录”按钮（类型为 link）
@@ -240,6 +246,8 @@ async def xiaohongshu_cookie_gen(id,status_queue):
         context = await set_init_script(context)
         # Pause the page, and start recording manually.
         page = await context.new_page()
+        if hasattr(page, 'set_login_session'):
+            page.set_login_session(True)
         await page.goto("https://creator.xiaohongshu.com/")
         await page.locator('img.css-wemwzq').click()
         img_locator = page.get_by_role("img").nth(1)

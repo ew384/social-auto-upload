@@ -90,7 +90,7 @@ class MultiAccountBrowserAdapter:
         return f"{platform_name}_{uuid_short}"
 
     async def get_or_create_account_tab(self, platform: str, cookie_file: str, initial_url: str) -> str:
-        """获取或创建账号标签页"""
+        """获取或创建账号标签页 - 增强版本"""
         
         # 生成标识符和显示名
         tab_identifier = self.generate_tab_identifier(platform, cookie_file)
@@ -105,91 +105,88 @@ class MultiAccountBrowserAdapter:
         print(f"    内部标识: {tab_identifier}")
         print(f"    Cookie文件: {Path(cookie_file).name}")
         
-        # 🔥 新增：先检查 multi-account-browser 中是否已有该账号的标签页
+        # 🔥 步骤1：检查 multi-account-browser 中的现有标签页
         try:
             result = self._make_request('GET', '/accounts')
             if result.get('success'):
                 existing_tabs = result.get('data', [])
                 
-                # 查找匹配的标签页（根据 cookieFile 匹配）
+                # 🔥 改进：支持多种匹配方式
                 cookie_filename = Path(cookie_file).name
                 for tab in existing_tabs:
+                    is_match = False
+                    
+                    # 方式1: 通过 cookieFile 精确匹配
                     if tab.get('cookieFile') and Path(tab['cookieFile']).name == cookie_filename:
+                        is_match = True
+                        print(f"🎯 通过 cookieFile 匹配到标签页: {tab['accountName']}")
+                    
+                    # 方式2: 通过账号名称匹配（备用）
+                    elif tab.get('accountName') == tab_identifier:
+                        is_match = True
+                        print(f"🎯 通过 accountName 匹配到标签页: {tab['accountName']}")
+                    
+                    # 方式3: 通过平台和部分UUID匹配（容错）
+                    elif platform in tab.get('accountName', '') and cookie_filename.split('.')[0] in tab.get('accountName', ''):
+                        is_match = True
+                        print(f"🎯 通过平台+UUID匹配到标签页: {tab['accountName']}")
+                    
+                    if is_match:
                         tab_id = tab['id']
                         print(f"🔄 发现现有标签页: {tab['accountName']} (ID: {tab_id})")
                         
                         # 验证标签页是否仍然有效
                         if await self.is_tab_valid(tab_id):
-                            print(f"✅ 现有标签页有效，直接复用")
+                            print(f"✅ 现有标签页有效，开始验证登录状态...")
                             
-                            # 切换到该标签页
-                            await self.switch_to_tab(tab_id)
+                            # 🔥 验证 cookies 状态
+                            login_valid = await self.verify_login_status(tab_id, platform)
                             
-                            # 更新本地映射
-                            self.account_tabs[account_key] = tab_id
-                            
-                            return tab_id
+                            if login_valid:
+                                print(f"✅ 账号登录状态有效，直接复用标签页")
+                                await self.switch_to_tab(tab_id)
+                                self.account_tabs[account_key] = tab_id
+                                return tab_id
+                            else:
+                                print(f"⚠️ 账号登录状态失效，重新加载cookies...")
+                                # 重新加载cookies
+                                success = await self.load_cookies_with_verification(tab_id, platform, cookie_file)
+                                if success:
+                                    print(f"✅ Cookies重新加载成功，复用标签页")
+                                    await self.switch_to_tab(tab_id)
+                                    self.account_tabs[account_key] = tab_id
+                                    return tab_id
+                                else:
+                                    print(f"❌ Cookies重新加载失败，关闭旧标签页")
+                                    await self.close_tab(tab_id)
                         else:
-                            print(f"⚠️ 现有标签页无效，将创建新的")
-                            # 关闭无效的标签页
+                            print(f"⚠️ 现有标签页无效，关闭并重新创建")
                             await self.close_tab(tab_id)
-                            break
+                        
+                        break  # 找到匹配项就跳出循环
+                        
         except Exception as e:
             print(f"⚠️ 检查现有标签页失败: {e}")
         
-        # 检查本地映射中是否已有该账号的标签页
-        if account_key in self.account_tabs:
-            tab_id = self.account_tabs[account_key]
-            
-            # 验证标签页是否仍然有效
-            if await self.is_tab_valid(tab_id):
-                print(f"🔄 发现本地映射标签页: {display_name} (ID: {tab_id})")
-                
-                # 检查当前页面状态
-                current_url = await self.get_page_url(tab_id)
-                print(f"    当前URL: {current_url}")
-                
-                # 检查是否需要重新处理登录状态
-                needs_reauth = await self.check_if_needs_reauth(platform, current_url)
-                
-                if needs_reauth:
-                    print(f"⚠️ 标签页需要重新认证: {display_name}")
-                    success = await self.handle_reauth(tab_id, platform, cookie_file, initial_url)
-                    if success:
-                        print(f"✅ 重新认证成功，复用标签页: {display_name}")
-                        return tab_id
-                    else:
-                        print(f"❌ 重新认证失败，创建新标签页: {display_name}")
-                        # 关闭旧标签页
-                        await self.close_tab(tab_id)
-                        del self.account_tabs[account_key]
-                else:
-                    print(f"✅ 标签页状态正常，直接复用: {display_name}")
-                    # 切换到该标签页
-                    await self.switch_to_tab(tab_id)
-                    return tab_id
-            else:
-                print(f"⚠️ 本地映射标签页已失效，重新创建: {display_name}")
-                del self.account_tabs[account_key]
-        
-        # 创建新的标签页（使用内部标识符作为 account_name）
+        # 🔥 步骤2：创建新的标签页
         print(f"🆕 为账号创建新的标签页: {display_name}")
         tab_id = await self.create_account_tab(platform, tab_identifier, initial_url)
         
-        # 加载cookies并验证
+        # 🔥 步骤3：加载cookies（如果存在）
         if cookie_file and Path(cookie_file).exists():
+            print(f"🍪 为新标签页加载cookies: {Path(cookie_file).name}")
             success = await self.load_cookies_with_verification(tab_id, platform, cookie_file)
-            if not success:
-                print(f"⚠️ 新标签页cookies加载失败: {display_name}")
+            if success:
+                print(f"✅ 新标签页cookies加载成功")
+            else:
+                print(f"⚠️ 新标签页cookies加载失败，但继续使用")
         
-        # 保存账号映射
+        # 🔥 步骤4：保存账号映射
         self.account_tabs[account_key] = tab_id
-        print(f"📋 账号标签页映射已保存:")
-        print(f"    显示名: {display_name}")
-        print(f"    内部标识: {tab_identifier}")
-        print(f"    标签页ID: {tab_id}")
+        print(f"📋 账号标签页映射已保存: {display_name} -> {tab_id}")
         
         return tab_id
+
 
     async def check_if_needs_reauth(self, platform: str, current_url: str) -> bool:
         """检查是否需要重新认证 - 支持多平台"""

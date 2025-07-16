@@ -23,8 +23,13 @@ class AccountTabManager:
             cls._instance = super().__new__(cls)
             cls._adapter = MultiAccountBrowserAdapter()
             # 设置数据库路径
-            from conf import BASE_DIR
-            cls._adapter.set_database_path(str(BASE_DIR / "db" / "database.db"))
+            try:
+                from conf import BASE_DIR
+                db_path = str(BASE_DIR / "db" / "database.db")
+                cls._adapter.set_database_path(db_path)
+                print(f"🐛 AccountTabManager 数据库路径设置: {db_path}")
+            except Exception as e:
+                print(f"⚠️ 设置数据库路径失败: {e}")
         return cls._instance
     
     @classmethod
@@ -34,38 +39,34 @@ class AccountTabManager:
     def db_path(self):
         """代理到 adapter 的 db_path"""
         return self._adapter.db_path if self._adapter else None
-    def generate_account_key(self, storage_state_path: str) -> str:
-        """根据 storage_state_path 生成账号唯一标识"""
-        if not storage_state_path:
+
+    def generate_account_key(self, storage_state: str) -> str:
+        """根据 storage_state 生成账号唯一标识 - 🔥 统一参数名"""
+        if not storage_state:
             return "default_account"
         
-        # 使用绝对路径作为唯一标识
-        return str(Path(storage_state_path).absolute())
+        return str(Path(storage_state).absolute())
 
     async def create_temp_blank_tab(self) -> str:
         """创建临时空白标签页"""
         return await self._adapter.create_account_tab("temp", "temp_login", "about:blank")
 
-    def infer_platform_from_storage(self, storage_state_path: str) -> str:
-        """从数据库获取平台类型"""
-        if not storage_state_path:
-            return "weixin"  # 默认值
+    def infer_platform_from_storage(self, storage_state: str) -> str:
+        """从数据库获取平台类型 - 🔥 统一参数名"""
+        if not storage_state:
+            return "weixin"
         
-        # 从数据库获取正确的平台类型
-        account_info = self.get_account_info_from_db(storage_state_path)
+        account_info = self.get_account_info_from_db(storage_state)
         if account_info and account_info.get('platform_type'):
             platform_type = account_info['platform_type']
-            # 根据数据库的 type 字段映射到正确的平台
             platform_map = {1: 'xiaohongshu', 2: 'weixin', 3: 'douyin', 4: 'kuaishou'}
             return platform_map.get(platform_type, 'weixin')
         
-        # 如果数据库没有找到，返回默认值
-        print(f"⚠️ 数据库中未找到账号信息: {Path(storage_state_path).name}")
+        print(f"⚠️ 数据库中未找到账号信息: {Path(storage_state).name}")
         return "weixin"
         
     def get_account_info_from_db(self, cookie_file: str) -> Optional[Dict[str, Any]]:
         """从数据库获取账号信息"""
-        print(f"🐛 调试: self.db_path = {getattr(self, 'db_path', 'NOT_SET')}")
         if not self.db_path:
             return None
             
@@ -86,8 +87,10 @@ class AccountTabManager:
                     return {
                         'username': username,
                         'platform': platform_map.get(platform_type, 'weixin'),
-                        'platform_type': platform_type  # 🔥 添加这个字段
+                        'platform_type': platform_type
                     }
+                else:
+                    print(f"⚠️ 数据库中未找到账号信息: {cookie_filename}")
                 return None
         except Exception as e:
             print(f"⚠️ 获取账号信息失败: {e}")
@@ -102,48 +105,45 @@ class AccountTabManager:
         }
         return platform_urls.get(platform, 'https://channels.weixin.qq.com')
     
-    async def get_or_create_account_tab(self, storage_state_path: str = None) -> str:
+    async def get_or_create_account_tab(self, storage_state: str = None) -> str:
         """
-        获取或创建账号标签页
-        这是核心方法：替代原来的 browser.new_context() + page.new_page()
+        获取或创建账号标签页 - 🔥 统一参数名
+        
+        Args:
+            storage_state: cookie 文件路径（字符串）
         """
-        account_key = self.generate_account_key(storage_state_path)
-        platform = self.infer_platform_from_storage(storage_state_path)
+        account_key = self.generate_account_key(storage_state)
+        platform = self.infer_platform_from_storage(storage_state)
         initial_url = self.get_platform_initial_url(platform)
         
         print(f"\n🎯 获取或创建账号标签页:")
         print(f"   账号标识: {account_key}")
         print(f"   平台: {platform}")
-        print(f"   Cookie文件: {Path(storage_state_path).name if storage_state_path else 'None'}")
+        print(f"   Cookie文件: {Path(storage_state).name if storage_state else 'None'}")
         
-        # 检查是否已有该账号的标签页
+        # 现有逻辑保持不变...
         if account_key in self._account_tabs:
             tab_id = self._account_tabs[account_key]
             print(f"   发现现有标签页: {tab_id}")
             
-            # 验证标签页是否仍然有效
             if await self._adapter.is_tab_valid(tab_id):
                 print(f"   ✅ 标签页有效，直接复用")
-                
-                # 切换到该标签页
                 await self._adapter.switch_to_tab(tab_id)
                 
-                # 检查是否需要重新认证
                 current_url = await self._adapter.get_page_url(tab_id)
                 print(f"   当前URL: {current_url}")
                 
                 needs_reauth = await self._check_needs_reauth(platform, current_url)
-                if needs_reauth and storage_state_path:
+                if needs_reauth and storage_state:
                     print(f"   ⚠️ 需要重新认证")
-                    success = await self._handle_reauth(tab_id, platform, storage_state_path)
+                    success = await self._handle_reauth(tab_id, platform, storage_state)
                     if success:
                         print(f"   ✅ 重新认证成功")
                     else:
                         print(f"   ❌ 重新认证失败，将创建新标签页")
                         await self._adapter.close_tab(tab_id)
                         del self._account_tabs[account_key]
-                        # 递归调用创建新标签页
-                        return await self.get_or_create_account_tab(storage_state_path)
+                        return await self.get_or_create_account_tab(storage_state)
                 
                 return tab_id
             else:
@@ -154,7 +154,7 @@ class AccountTabManager:
         print(f"   🆕 创建新标签页")
         tab_id = await self._adapter.get_or_create_account_tab(
             platform=platform,
-            cookie_file=storage_state_path or "",
+            cookie_file=storage_state or "",
             initial_url=initial_url
         )
         
@@ -163,26 +163,23 @@ class AccountTabManager:
         print(f"   ✅ 新标签页创建完成: {tab_id}")
         
         return tab_id
-    
+
     async def _check_needs_reauth(self, platform: str, current_url: str) -> bool:
         """检查是否需要重新认证"""
         login_indicators = ['login', 'signin', 'auth', '登录', '扫码']
         return any(indicator in current_url.lower() for indicator in login_indicators)
     
-    async def _handle_reauth(self, tab_id: str, platform: str, storage_state_path: str) -> bool:
-        """处理重新认证"""
+    async def _handle_reauth(self, tab_id: str, platform: str, storage_state: str) -> bool:
+        """处理重新认证 - 🔥 统一参数名"""
         try:
-            print(f"   🔄 重新加载cookies: {Path(storage_state_path).name}")
+            print(f"   🔄 重新加载cookies: {Path(storage_state).name}")
             
-            # 重新加载cookies
-            await self._adapter.load_cookies(tab_id, storage_state_path)
+            await self._adapter.load_cookies(tab_id, storage_state)
             await asyncio.sleep(3)
             
-            # 刷新页面
             await self._adapter.refresh_page(tab_id)
             await asyncio.sleep(5)
             
-            # 检查认证结果
             current_url = await self._adapter.get_page_url(tab_id)
             needs_auth = await self._check_needs_reauth(platform, current_url)
             
@@ -192,18 +189,18 @@ class AccountTabManager:
             print(f"   ❌ 重新认证失败: {e}")
             return False
     
-    async def save_account_state(self, storage_state_path: str, tab_id: str = None):
-        """保存账号状态"""
-        if not storage_state_path:
+    async def save_account_state(self, storage_state: str, tab_id: str = None):
+        """保存账号状态 - 🔥 统一参数名"""
+        if not storage_state:
             return
         
         if not tab_id:
-            account_key = self.generate_account_key(storage_state_path)
+            account_key = self.generate_account_key(storage_state)
             tab_id = self._account_tabs.get(account_key)
         
         if tab_id:
-            await self._adapter.save_cookies(tab_id, storage_state_path)
-            print(f"   💾 账号状态已保存: {Path(storage_state_path).name}")
+            await self._adapter.save_cookies(tab_id, storage_state)
+            print(f"   💾 账号状态已保存: {Path(storage_state).name}")
     
     def get_adapter(self) -> MultiAccountBrowserAdapter:
         """获取底层适配器"""
@@ -233,15 +230,21 @@ class MainFrame:
 class PlaywrightCompatPage:
     """兼容 Playwright Page API"""
     
-    def __init__(self, tab_id: str, tab_manager: AccountTabManager, storage_state_path: str = None, init_scripts: str = None):
+    def __init__(self, tab_id: str, tab_manager: AccountTabManager, storage_state: str = None, init_scripts: str = None):
         self.tab_id = tab_id
         self.tab_manager = tab_manager
         self.adapter = tab_manager.get_adapter()
-        self.storage_state_path = storage_state_path
+        self.storage_state = storage_state
         self._url = ""
         self._event_listeners = {}  # 🔥 新增：事件监听器存储
         self.main_frame = MainFrame(self)
         self._monitoring_task = None
+        self.is_login_session = False  # 标识这是否是专门用于登录的页面，默认false，登录模块会设置为true
+    
+    def set_login_session(self, is_login: bool = True):
+        """设置是否为登录会话 - 由登录模块调用"""
+        self.is_login_session = is_login
+        print(f"🏷️ [{self.tab_id}] 设置登录会话标识: {is_login}")
 
     def on(self, event: str, handler) -> None:
         if event not in self._event_listeners:
@@ -253,23 +256,29 @@ class PlaywrightCompatPage:
             self._monitoring_task = asyncio.create_task(self._start_url_monitoring())
 
     async def _start_url_monitoring(self) -> None:
-        """URL 变化监控 - 简化版本"""
+        """URL 变化监控 - 🔥 根据场景决定是否检测登录"""
         print(f"🔍 [{self.tab_id}] 启动 URL 变化监控")
         
         current_url = self._url
         
-        while True:  # 🔥 简化：不需要额外的停止条件
+        while True:
             try:
                 new_url = await self.adapter.execute_script(self.tab_id, 'window.location.href')
                 
                 if new_url and new_url != current_url:
                     print(f"🔄 [{self.tab_id}] URL 变化: {current_url} -> {new_url}")
                     
+                    # 🔥 关键：只有在非登录会话时才自动检测登录成功
+                    if not self.is_login_session:
+                        await self._check_and_handle_login_success(current_url, new_url)
+                    else:
+                        print(f"🏷️ [{self.tab_id}] 登录会话模式，跳过自动登录检测")
+                    
                     current_url = new_url
                     self._url = new_url
                     self.main_frame.url = new_url
                     
-                    # 触发事件
+                    # 触发framenavigated事件
                     if 'framenavigated' in self._event_listeners:
                         for handler in self._event_listeners['framenavigated']:
                             try:
@@ -284,6 +293,73 @@ class PlaywrightCompatPage:
             except Exception as e:
                 print(f"⚠️ [{self.tab_id}] URL 监控异常: {e}")
                 await asyncio.sleep(0.5)
+
+    async def _check_and_handle_login_success(self, old_url: str, new_url: str):
+        """检查并处理登录成功 - 仅用于标签页复用场景"""
+        try:
+            # 检测是否从登录页跳转到主页
+            old_needs_auth = self._is_login_page(old_url)
+            new_needs_auth = self._is_login_page(new_url)
+            
+            if old_needs_auth and not new_needs_auth and self.storage_state:
+                print(f"🎉 [{self.tab_id}] 检测到复用标签页登录成功！")
+                
+                # 等待一下确保页面稳定
+                await asyncio.sleep(2)
+                
+                # 保存cookies
+                success = await self.adapter.save_cookies(self.tab_id, self.storage_state)
+                if success:
+                    print(f"✅ [{self.tab_id}] 已自动更新cookies文件")
+                    
+                    # 更新数据库状态
+                    await self._update_account_status()
+                else:
+                    print(f"❌ [{self.tab_id}] cookies保存失败")
+                    
+        except Exception as e:
+            print(f"❌ [{self.tab_id}] 检查登录成功失败: {e}")
+
+    def _is_login_page(self, url: str) -> bool:
+        """检查是否是登录页面"""
+        if not url:
+            return False
+        login_indicators = ['login', 'signin', 'auth', '登录', '扫码']
+        return any(indicator in url.lower() for indicator in login_indicators)
+
+    async def _update_account_status(self):
+        """更新数据库中的账号状态为有效 - 简化版本"""
+        try:
+            db_path = self.tab_manager.db_path
+            if not db_path or not self.storage_state:
+                return
+            
+            cookie_filename = Path(self.storage_state).name
+            current_time = datetime.now().isoformat()
+            
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE user_info 
+                    SET status = 1, last_check_time = ?
+                    WHERE filePath = ?
+                ''', (current_time, cookie_filename))
+                
+                # 🔥 简化：既然能走到这里，记录必然存在，直接提交
+                conn.commit()
+                print(f"✅ [{self.tab_id}] 数据库状态已更新为有效: {cookie_filename}")
+                
+                # 🔥 可选：仅在调试模式下检查影响行数
+                if cursor.rowcount == 0:
+                    print(f"⚠️ [{self.tab_id}] 意外情况：未找到记录 {cookie_filename} - 这不应该发生")
+                    # 可以添加一些调试信息
+                    cursor.execute('SELECT filePath FROM user_info')
+                    all_files = [row[0] for row in cursor.fetchall()]
+                    print(f"🐛 数据库中现有的文件: {all_files}")
+                
+        except Exception as e:
+            print(f"❌ [{self.tab_id}] 更新数据库状态失败: {e}")
+
 
     async def goto(self, url: str, **kwargs) -> None:
         """导航到指定URL - 简化版本，初始化脚本由 multi-account-browser 自动处理"""
@@ -442,7 +518,7 @@ class PlaywrightCompatPage:
         return PlaywrightCompatFrameLocator(selector, self.tab_id, self.adapter)
 
     async def close(self) -> None:
-        """关闭页面 - 在多账号浏览器模式下不实际关闭标签页"""
+        """关闭页面"""
         print(f"📝 [{self.tab_id}] Page.close() - 保留标签页以供复用")
         
         # 停止URL监控任务
@@ -453,11 +529,10 @@ class PlaywrightCompatPage:
             except asyncio.CancelledError:
                 pass
         
-        # 保存当前状态（如果有storage_state_path）
-        if self.storage_state_path:
-            await self.tab_manager.save_account_state(self.storage_state_path, self.tab_id)
+        # 保存当前状态（如果有storage_state）
+        if self.storage_state:
+            await self.tab_manager.save_account_state(self.storage_state, self.tab_id)
         
-        # 注意：这里不调用 adapter.close_tab()，因为我们要保留标签页供复用
         print(f"✅ [{self.tab_id}] 页面已关闭（标签页保留）")
 
 class PlaywrightCompatFrameLocator:
@@ -849,8 +924,19 @@ class PlaywrightCompatKeyboard:
 class PlaywrightCompatContext:
     """兼容 Playwright Context API - 重新设计为标签页管理"""
     
-    def __init__(self, storage_state_path: str = None):
-        self.storage_state_path = storage_state_path
+    def __init__(self, storage_state: str = None):  # 🔥 修改：使用原生参数名
+        # 🔥 统一类型处理：支持 str | Path | Dict，与原生 Playwright 一致
+        if storage_state:
+            if isinstance(storage_state, (str, Path)):
+                self.storage_state = str(storage_state)
+            elif isinstance(storage_state, dict):
+                # 如果传入的是 dict，暂时不处理，设为 None
+                self.storage_state = None
+                print("⚠️ 兼容层暂不支持 dict 类型的 storage_state")
+            else:
+                self.storage_state = str(storage_state)
+        else:
+            self.storage_state = None
         self.tab_manager = AccountTabManager.get_instance()
         self._pages = []
         self._init_scripts = []  # 存储初始化脚本
@@ -889,17 +975,17 @@ class PlaywrightCompatContext:
         return self
 
     async def new_page(self) -> 'PlaywrightCompatPage':
-        """创建新页面 - 🔥 极简化，使用 multi-account-browser 原生能力"""
+        """创建新页面 - 使用统一的 storage_state"""
         
         print(f"\n🎯 Context.newPage() - 创建页面")
         
         # 1. 获取或创建标签页
-        if self.storage_state_path:
-            tab_id = await self.tab_manager.get_or_create_account_tab(self.storage_state_path)
+        if self.storage_state:
+            tab_id = await self.tab_manager.get_or_create_account_tab(self.storage_state)
         else:
             tab_id = await self.tab_manager.create_temp_blank_tab()
         
-        # 2. 🔥 核心简化：直接调用 multi-account-browser 的 addInitScript API
+        # 2. 应用初始化脚本
         if self._init_scripts:
             await self._apply_init_scripts_to_tab(tab_id)
         
@@ -907,7 +993,7 @@ class PlaywrightCompatContext:
         page = PlaywrightCompatPage(
             tab_id=tab_id, 
             tab_manager=self.tab_manager, 
-            storage_state_path=self.storage_state_path
+            storage_state=self.storage_state  # 🔥 修改：使用统一参数名
         )
         self._pages.append(page)
         
@@ -944,14 +1030,13 @@ class PlaywrightCompatContext:
         return {}
 
     async def close(self) -> None:
-        """关闭上下文 - 在标签页复用模式下，这里不关闭标签页"""
+        """关闭上下文"""
         print(f"📝 Context.close() - 保留标签页以供复用")
         
         # 保存当前状态
-        if self.storage_state_path and self._pages:
-            await self.tab_manager.save_account_state(self.storage_state_path, self._pages[0].tab_id)
+        if self.storage_state and self._pages:
+            await self.tab_manager.save_account_state(self.storage_state, self._pages[0].tab_id)
         
-        # 清理页面引用，但不关闭实际的标签页
         self._pages.clear()
 
 
@@ -964,12 +1049,21 @@ class PlaywrightCompatBrowser:
         self._contexts = []
         print(f"🚀 浏览器实例创建完成 (multi-account-browser 模式)")
     
-    async def new_context(self, storage_state_path: str = None, **kwargs) -> 'PlaywrightCompatContext':
-        """创建新上下文"""
-        print(f"\n🎯 Browser.new_context() - 准备账号上下文")
-        print(f"   storage_state_path: {storage_state_path}")
+    async def new_context(self, storage_state=None, **kwargs) -> 'PlaywrightCompatContext':
+        """
+        创建新上下文 - 🔥 与原生 Playwright 完全兼容
         
-        context = PlaywrightCompatContext(storage_state_path)
+        Args:
+            storage_state: str | Path | Dict | None - 与原生 Playwright 一致
+                - str/Path: cookie 文件路径
+                - Dict: storage state 对象（暂不支持）
+                - None: 无状态
+        """
+        print(f"\n🎯 Browser.new_context() - 准备账号上下文")
+        print(f"   storage_state: {storage_state}")
+        print(f"   storage_state 类型: {type(storage_state)}")
+        
+        context = PlaywrightCompatContext(storage_state)
         self._contexts.append(context)
         return context
     
