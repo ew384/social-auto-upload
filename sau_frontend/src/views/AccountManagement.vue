@@ -823,6 +823,10 @@ const connectSSE = (platform, name) => {
   };
 
   eventSource.onerror = (error) => {
+    if (loginStatus.value === "200" || loginStatus.value === "500") {
+      console.log("SSE连接正常结束");
+      return;
+    }
     console.error("SSE连接错误:", error);
     ElMessage.error("连接服务器失败，请稍后再试");
     closeSSEConnection();

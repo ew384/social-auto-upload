@@ -268,16 +268,18 @@ class MultiAccountBrowserAdapter:
 
     async def load_cookies_with_verification(self, tab_id: str, platform: str, cookie_file: str) -> bool:
         """加载cookies并进行平台特定验证"""
-        if not Path(cookie_file).exists():
-            print(f"⚠️ Cookie文件不存在: {cookie_file}")
+        cookie_file_str = str(cookie_file) if cookie_file else ""
+        
+        if not Path(cookie_file_str).exists():
+            print(f"⚠️ Cookie文件不存在: {cookie_file_str}")
             return False
         
-        print(f"🍪 开始加载并验证cookies: {Path(cookie_file).name}")
+        print(f"🍪 开始加载并验证cookies: {Path(cookie_file_str).name}")
         
         # 1. 加载cookies
         result = self._make_request('POST', '/account/load-cookies', {
             "tabId": tab_id,
-            "cookieFile": cookie_file
+            "cookieFile": cookie_file_str  # 使用字符串
         })
         
         if not result.get("success", False):
@@ -423,31 +425,39 @@ class MultiAccountBrowserAdapter:
     
     async def load_cookies(self, tab_id: str, cookie_file: str) -> bool:
         """加载 cookies"""
-        if not Path(cookie_file).exists():
-            print(f"⚠️ Cookie文件不存在: {cookie_file}")
+        cookie_file_str = str(cookie_file) if cookie_file else ""
+        
+        if not Path(cookie_file_str).exists():
+            print(f"⚠️ Cookie文件不存在: {cookie_file_str}")
             return False
         
         result = self._make_request('POST', '/account/load-cookies', {
             "tabId": tab_id,
-            "cookieFile": cookie_file
+            "cookieFile": cookie_file_str  # 使用字符串而不是 Path 对象
         })
         
         success = result.get("success", False)
         if success:
-            print(f"💾 Cookies加载成功: {cookie_file}")
-            await asyncio.sleep(2)
+            print(f"💾 Cookies加载成功: {cookie_file_str}")
+            await asyncio.sleep(1)
         return success
     
     async def save_cookies(self, tab_id: str, cookie_file: str) -> bool:
         """保存 cookies"""
+        # 确保 cookie_file 是字符串
+        cookie_file_str = str(cookie_file) if cookie_file else ""
+        
+        if not Path(cookie_file_str).parent.exists():
+            Path(cookie_file_str).parent.mkdir(parents=True, exist_ok=True)
+        
         result = self._make_request('POST', '/account/save-cookies', {
             "tabId": tab_id,
-            "cookieFile": cookie_file
+            "cookieFile": cookie_file_str  # 使用字符串而不是 Path 对象
         })
         
         success = result.get("success", False)
         if success:
-            print(f"💾 Cookies保存成功: {cookie_file}")
+            print(f"💾 Cookies保存成功: {cookie_file_str}")
         return success
     
     async def close_tab(self, tab_id: str) -> bool:

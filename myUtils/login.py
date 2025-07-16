@@ -242,7 +242,6 @@ async def xiaohongshu_cookie_gen(id,status_queue):
         page = await context.new_page()
         await page.goto("https://creator.xiaohongshu.com/")
         await page.locator('img.css-wemwzq').click()
-
         img_locator = page.get_by_role("img").nth(1)
         # 获取 src 属性值
         src = await img_locator.get_attribute("src")
