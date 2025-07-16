@@ -16,7 +16,6 @@ from utils.video_utils import is_video_file
 from datetime import datetime
 import requests
 
-print("🔄 正在加载 multi-account-browser 集成模块...")
 
 
 active_queues = {}
@@ -431,7 +430,6 @@ def get_browser_status():
     
     current_mode = get_current_browser_mode()
     
-    # 检查 multi-account-browser 连接状态
     multi_browser_available = False
     multi_browser_info = {}
     

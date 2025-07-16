@@ -49,7 +49,7 @@ async def douyin_cookie_gen(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.save_storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
         result = await check_cookie(3, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
@@ -124,7 +124,7 @@ async def get_tencent_cookie(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.save_storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
         result = await check_cookie(2,f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
@@ -195,7 +195,7 @@ async def get_ks_cookie(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.save_storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
         result = await check_cookie(4, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
@@ -266,7 +266,7 @@ async def xiaohongshu_cookie_gen(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.save_storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
         result = await check_cookie(1, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")

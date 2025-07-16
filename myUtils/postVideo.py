@@ -46,9 +46,6 @@ def post_video_tencent(title, files, tags, account_file, category=TencentZoneTyp
             print(f"标题：{title}")
             print(f"Hashtag：{tags}")
             
-            # 🔥 关键：TencentVideo 现在会自动使用正确的 playwright 实现
-            # 如果是 multi-account-browser 模式，会自动复用标签页
-            # 如果是传统模式，会启动新的 Chrome 进程
             app = TencentVideo(title, str(file), tags, publish_datetimes[index], cookie, category)
             asyncio.run(app.main(), debug=False)
 

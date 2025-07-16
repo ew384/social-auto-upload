@@ -916,7 +916,7 @@ class PlaywrightCompatContext:
             except Exception as e:
                 print(f"❌ [{tab_id}] 脚本 {i+1} 应用异常: {e}")
 
-    async def save_storage_state(self, path: str = None) -> Dict:
+    async def storage_state(self, path: str = None) -> Dict:
         """保存存储状态"""
         if path and self._pages:
             # 保存当前页面对应的账号状态
