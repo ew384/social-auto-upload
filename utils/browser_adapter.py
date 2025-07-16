@@ -171,15 +171,24 @@ class MultiAccountBrowserAdapter:
         # 🔥 步骤2：创建新的标签页
         print(f"🆕 为账号创建新的标签页: {display_name}")
         tab_id = await self.create_account_tab(platform, tab_identifier, initial_url)
-        
         # 🔥 步骤3：加载cookies（如果存在）
         if cookie_file and Path(cookie_file).exists():
             print(f"🍪 为新标签页加载cookies: {Path(cookie_file).name}")
+            print(f"🔍 Cookie文件大小: {Path(cookie_file).stat().st_size} 字节")
+            
             success = await self.load_cookies_with_verification(tab_id, platform, cookie_file)
             if success:
-                print(f"✅ 新标签页cookies加载成功")
+                print(f"✅ 新标签页cookies加载并验证成功")
             else:
-                print(f"⚠️ 新标签页cookies加载失败，但继续使用")
+                print(f"⚠️ 新标签页cookies加载失败，但继续使用标签页")
+                # 🔥 增加：获取当前页面状态用于调试
+                try:
+                    current_url = await self.get_page_url(tab_id)
+                    page_title = await self.execute_script(tab_id, "document.title")
+                    print(f"🔍 当前页面状态: {current_url}")
+                    print(f"🔍 页面标题: {page_title}")
+                except Exception as e:
+                    print(f"🔍 无法获取页面状态: {e}")
         
         # 🔥 步骤4：保存账号映射
         self.account_tabs[account_key] = tab_id
@@ -264,7 +273,6 @@ class MultiAccountBrowserAdapter:
             return False
 
     async def load_cookies_with_verification(self, tab_id: str, platform: str, cookie_file: str) -> bool:
-        """加载cookies并进行平台特定验证"""
         cookie_file_str = str(cookie_file) if cookie_file else ""
         
         if not Path(cookie_file_str).exists():
@@ -276,47 +284,61 @@ class MultiAccountBrowserAdapter:
         # 1. 加载cookies
         result = self._make_request('POST', '/account/load-cookies', {
             "tabId": tab_id,
-            "cookieFile": cookie_file_str  # 使用字符串
+            "cookieFile": cookie_file_str
         })
         
         if not result.get("success", False):
             print(f"❌ Cookies加载失败: {result.get('error')}")
             return False
         
-        print(f"🍪 Cookies文件加载成功，等待生效...")
-        await asyncio.sleep(3)
+        print(f"🍪 Cookies文件加载成功，开始导航到主页...")
         
-        # 2. 刷新页面让cookies生效
-        await self.refresh_page(tab_id)
-        await asyncio.sleep(5)
+        # 🔥 关键修改：不要刷新当前页面，而是导航到平台主页
+        platform_home_urls = {
+            'weixin': 'https://channels.weixin.qq.com/platform',  # 使用平台主页而不是根目录
+            'douyin': 'https://creator.douyin.com/creator-micro/content/upload',
+            'xiaohongshu': 'https://creator.xiaohongshu.com/creator-micro/content/upload',
+            'kuaishou': 'https://cp.kuaishou.com/article/publish/video'
+        }
+        
+        target_url = platform_home_urls.get(platform, 'https://channels.weixin.qq.com/platform')
+        
+        # 2. 导航到目标页面
+        await self.navigate_to_url(tab_id, target_url)
+        await asyncio.sleep(5)  # 给页面足够时间加载
         
         # 3. 验证cookies是否生效
-        max_retries = 3
+        max_retries = 2  # 减少重试次数
         for i in range(max_retries):
             try:
                 current_url = await self.get_page_url(tab_id)
                 print(f"验证第{i+1}次，当前URL: {current_url}")
                 
-                # 使用通用的检测方法
-                needs_auth = await self.check_if_needs_reauth(platform, current_url)
+                # 🔥 优化：检查URL是否不再包含登录标识
+                needs_auth = self._is_login_url(current_url)
                 
                 if not needs_auth:
                     print(f"✅ Cookies验证成功: {Path(cookie_file).name}")
                     return True
                     
-                # 如果仍需要认证，再次刷新
+                # 如果仍需要认证，等待一下再检查
                 if i < max_retries - 1:
-                    print(f"第{i+1}次验证失败，重新刷新页面...")
-                    await self.refresh_page(tab_id)
-                    await asyncio.sleep(5)
-                    
+                    print(f"第{i+1}次验证失败，等待页面完全加载...")
+                    await asyncio.sleep(3)
+                        
             except Exception as e:
                 print(f"验证过程出错: {e}")
-                if i < max_retries - 1:
-                    await asyncio.sleep(3)
         
-        print(f"❌ Cookies验证失败，可能已过期: {Path(cookie_file).name}")
+        print(f"❌ Cookies验证失败: {Path(cookie_file).name}")
         return False
+
+    def _is_login_url(self, url: str) -> bool:
+        """检查URL是否是登录页面"""
+        login_indicators = [
+            'login.html', 'login', 'signin', 'auth', 
+            '登录', '扫码', 'qrcode', 'scan'
+        ]
+        return any(indicator in url.lower() for indicator in login_indicators)
 
     def debug_print_account_mapping(self):
         """调试：打印当前的账号映射"""

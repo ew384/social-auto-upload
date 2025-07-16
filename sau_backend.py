@@ -182,6 +182,51 @@ def get_all_files():
             "data": None
         }), 500
 
+@app.route('/getRecentUploads', methods=['GET'])
+def get_recent_uploads():
+    """获取最近上传的视频文件（videoFile目录）"""
+    try:
+        videoFile_dir = Path(BASE_DIR / "videoFile")
+        recent_videos = []
+        
+        # 检查目录是否存在
+        if not videoFile_dir.exists():
+            return jsonify({
+                "code": 200,
+                "msg": "success",
+                "data": []
+            }), 200
+        
+        # 扫描 videoFile 目录
+        for file_path in videoFile_dir.iterdir():
+            if file_path.is_file():
+                # 检查是否为视频文件
+                if is_video_file(file_path.name):
+                    stat = file_path.stat()
+                    recent_videos.append({
+                        "id": str(hash(file_path.name + str(stat.st_mtime))),  # 生成唯一ID
+                        "filename": file_path.name,
+                        "filesize": round(stat.st_size / (1024 * 1024), 2),  # MB
+                        "upload_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        "file_path": file_path.name  # 只存文件名，因为都在videoFile目录
+                    })
+        
+        # 按修改时间倒序排列（最新的在前面）
+        recent_videos.sort(key=lambda x: x['upload_time'], reverse=True)
+        
+        return jsonify({
+            "code": 200,
+            "msg": "success", 
+            "data": recent_videos
+        }), 200
+        
+    except Exception as e:
+        print(f"获取最近上传文件出错: {e}")
+        return jsonify({
+            "code": 500,
+            "msg": f"获取最近上传文件失败: {str(e)}",
+            "data": None
+        }), 500
 
 @app.route("/getValidAccounts", methods=['GET'])
 async def getValidAccounts():

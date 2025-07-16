@@ -491,6 +491,180 @@
         </div>
       </template>
     </el-dialog>
+    <!-- 素材选择对话框 -->
+    <el-dialog
+      v-model="materialDialogVisible"
+      title="选择视频"
+      width="80%"
+      class="material-dialog"
+      :close-on-click-modal="false"
+    >
+      <div class="material-selector">
+        <!-- 加载状态 -->
+        <div v-if="loadingMaterials" class="loading-container">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>加载视频中...</span>
+        </div>
+
+        <!-- 视频内容 -->
+        <div v-else class="videos-content">
+          <!-- 标签页切换 -->
+          <el-tabs v-model="activeTab" class="video-tabs">
+            <!-- 最近上传 -->
+            <el-tab-pane label="最近上传" name="recent">
+              <div class="tab-content">
+                <div v-if="recentVideos.length > 0">
+                  <div class="videos-header">
+                    <h5>最近上传的视频 ({{ recentVideos.length }} 个)</h5>
+                    <div class="selection-info">
+                      <span v-if="selectedVideoIds.length > 0">
+                        已选择 {{ selectedVideoIds.length }} 个视频
+                      </span>
+                      <el-button 
+                        v-if="selectedVideoIds.length > 0"
+                        size="small" 
+                        @click="selectedVideoIds = []"
+                      >
+                        清空选择
+                      </el-button>
+                    </div>
+                  </div>
+
+                  <div class="videos-grid">
+                    <div 
+                      v-for="video in recentVideos" 
+                      :key="video.id"
+                      :class="['video-item', { 
+                        'selected': selectedVideoIds.includes(video.id) 
+                      }]"
+                      @click="toggleRecentVideoSelection(video.id)"
+                    >
+                      <!-- 视频预览 -->
+                      <div class="video-preview">
+                        <el-icon class="video-icon"><VideoPlay /></el-icon>
+                        <div class="video-overlay">
+                          <div class="overlay-content">
+                            <el-button size="small" @click.stop="previewRecentVideo(video)">
+                              <el-icon><View /></el-icon>
+                              预览
+                            </el-button>
+                          </div>
+                        </div>
+                        <!-- 选中标记 -->
+                        <div v-if="selectedVideoIds.includes(video.id)" class="selected-mark">
+                          <el-icon><Check /></el-icon>
+                        </div>
+                        <!-- 来源标记 -->
+                        <div class="source-badge recent">最近</div>
+                      </div>
+
+                      <!-- 视频信息 -->
+                      <div class="video-info">
+                        <div class="video-name" :title="video.filename">
+                          {{ video.filename }}
+                        </div>
+                        <div class="video-meta">
+                          <span class="video-size">{{ video.filesize }} MB</span>
+                          <span class="video-date">{{ formatDate(video.upload_time) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="empty-videos">
+                  <el-empty description="暂无最近上传的视频" />
+                </div>
+              </div>
+            </el-tab-pane>
+
+            <!-- 素材库 -->
+            <el-tab-pane label="素材库" name="library">
+              <div class="tab-content">
+                <div v-if="libraryMaterials.length > 0">
+                  <div class="videos-header">
+                    <h5>素材库视频 ({{ libraryMaterials.length }} 个)</h5>
+                    <div class="selection-info">
+                      <span v-if="selectedMaterialIds.length > 0">
+                        已选择 {{ selectedMaterialIds.length }} 个素材
+                      </span>
+                      <el-button 
+                        v-if="selectedMaterialIds.length > 0"
+                        size="small" 
+                        @click="selectedMaterialIds = []"
+                      >
+                        清空选择
+                      </el-button>
+                    </div>
+                  </div>
+
+                  <div class="videos-grid">
+                    <div 
+                      v-for="material in libraryMaterials" 
+                      :key="material.id"
+                      :class="['video-item', { 
+                        'selected': selectedMaterialIds.includes(material.id) 
+                      }]"
+                      @click="toggleMaterialSelection(material.id)"
+                    >
+                      <!-- 视频预览 -->
+                      <div class="video-preview">
+                        <el-icon class="video-icon"><VideoPlay /></el-icon>
+                        <div class="video-overlay">
+                          <div class="overlay-content">
+                            <el-button size="small" @click.stop="previewMaterial(material)">
+                              <el-icon><View /></el-icon>
+                              预览
+                            </el-button>
+                          </div>
+                        </div>
+                        <!-- 选中标记 -->
+                        <div v-if="selectedMaterialIds.includes(material.id)" class="selected-mark">
+                          <el-icon><Check /></el-icon>
+                        </div>
+                        <!-- 来源标记 -->
+                        <div class="source-badge library">素材库</div>
+                      </div>
+
+                      <!-- 视频信息 -->
+                      <div class="video-info">
+                        <div class="video-name" :title="material.filename">
+                          {{ material.filename }}
+                        </div>
+                        <div class="video-meta">
+                          <span class="video-size">{{ material.filesize }} MB</span>
+                          <span class="video-date">{{ formatDate(material.upload_time) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="empty-videos">
+                  <el-empty description="暂无素材库视频">
+                    <el-button type="primary" @click="navigateToMaterialManagement">
+                      <el-icon><Upload /></el-icon>
+                      去添加素材
+                    </el-button>
+                  </el-empty>
+                </div>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="cancelSelection">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="confirmSelection"
+            :disabled="selectedVideoIds.length === 0 && selectedMaterialIds.length === 0"
+          >
+            确认选择 ({{ selectedVideoIds.length + selectedMaterialIds.length }})
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -513,6 +687,7 @@ import {
   Minus,
   Star,
   Flag,
+  Loading,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useAccountStore } from "@/stores/account";
@@ -644,18 +819,202 @@ const handleVideoUploadError = (error) => {
   console.error("上传错误:", error);
 };
 
+const materialDialogVisible = ref(false);
+const recentVideos = ref([]); // 最近上传的视频 (videoFile目录)
+const libraryMaterials = ref([]); // 素材库视频 (videos目录)
+const loadingMaterials = ref(false);
+const selectedVideoIds = ref([]);
+const selectedMaterialIds = ref([]);
+const currentSelectingTask = ref(null);
+const activeTab = ref("recent"); // 'recent' 或 'library'
+
 const selectFromLibrary = async (task) => {
-  ElMessage.info("素材库功能开发中...");
+  currentSelectingTask.value = task;
+  materialDialogVisible.value = true;
+  selectedVideoIds.value = [];
+  selectedMaterialIds.value = [];
+
+  // 加载两种数据源
+  await loadAllVideoSources();
 };
 
-const addMoreVideos = (task) => {
-  selectFromLibrary(task);
+// 替换原有的 addMoreVideos 方法
+const addMoreVideos = async (task) => {
+  await selectFromLibrary(task);
 };
 
+// 新增：加载所有视频源
+const loadAllVideoSources = async () => {
+  loadingMaterials.value = true;
+  try {
+    // 并行加载两种数据源
+    const [recentResponse, libraryResponse] = await Promise.all([
+      // 最近上传的视频 (videoFile目录) - 使用新接口
+      fetch(`${apiBaseUrl}/getRecentUploads`).then((res) => res.json()),
+      // 素材库视频 (数据库) - 使用现有接口
+      materialApi.getAllMaterials(),
+    ]);
+
+    // 处理最近上传的视频
+    if (recentResponse.code === 200) {
+      recentVideos.value = recentResponse.data; // 后端已经过滤了视频文件
+      console.log("最近上传的视频:", recentVideos.value);
+    }
+
+    // 处理素材库视频
+    if (libraryResponse.code === 200) {
+      libraryMaterials.value = libraryResponse.data.filter((material) =>
+        isVideoFile(material.filename)
+      );
+      console.log("素材库视频:", libraryMaterials.value);
+    }
+  } catch (error) {
+    console.error("获取视频列表出错:", error);
+    ElMessage.error("获取视频列表失败");
+  } finally {
+    loadingMaterials.value = false;
+  }
+};
+
+// 新增：切换最近视频选择状态
+const toggleRecentVideoSelection = (videoId) => {
+  const index = selectedVideoIds.value.indexOf(videoId);
+  if (index > -1) {
+    selectedVideoIds.value.splice(index, 1);
+  } else {
+    selectedVideoIds.value.push(videoId);
+  }
+};
+
+// 更新：切换素材选择状态
+const toggleMaterialSelection = (materialId) => {
+  const index = selectedMaterialIds.value.indexOf(materialId);
+  if (index > -1) {
+    selectedMaterialIds.value.splice(index, 1);
+  } else {
+    selectedMaterialIds.value.push(materialId);
+  }
+};
+
+// 新增：确认选择视频和素材
+const confirmSelection = () => {
+  const totalSelected =
+    selectedVideoIds.value.length + selectedMaterialIds.value.length;
+  if (totalSelected === 0) {
+    ElMessage.warning("请选择至少一个视频");
+    return;
+  }
+
+  const allSelectedVideos = [];
+
+  // 处理最近上传的视频
+  const selectedRecentVideos = recentVideos.value.filter((video) =>
+    selectedVideoIds.value.includes(video.id)
+  );
+
+  selectedRecentVideos.forEach((video) => {
+    allSelectedVideos.push({
+      name: video.filename,
+      path: video.file_path,
+      url: `${apiBaseUrl}/getFile?filename=${video.file_path}`,
+      size: video.filesize * 1024 * 1024,
+      type: "video/mp4",
+      id: `recent_${video.id}`,
+      source: "recent", // 标记来源
+    });
+  });
+
+  // 处理素材库视频
+  const selectedLibraryMaterials = libraryMaterials.value.filter((material) =>
+    selectedMaterialIds.value.includes(material.id)
+  );
+
+  selectedLibraryMaterials.forEach((material) => {
+    allSelectedVideos.push({
+      name: material.filename,
+      path: material.file_path,
+      url: materialApi.getMaterialPreviewUrl(
+        material.file_path.split("/").pop()
+      ),
+      size: material.filesize * 1024 * 1024,
+      type: "video/mp4",
+      id: `library_${material.id}`,
+      source: "library", // 标记来源
+    });
+  });
+
+  // 添加到当前任务，避免重复
+  allSelectedVideos.forEach((videoInfo) => {
+    const exists = currentSelectingTask.value.videos.find(
+      (v) => v.id === videoInfo.id || v.path === videoInfo.path
+    );
+    if (!exists) {
+      currentSelectingTask.value.videos.push(videoInfo);
+    }
+  });
+
+  materialDialogVisible.value = false;
+  ElMessage.success(`已添加 ${allSelectedVideos.length} 个视频`);
+};
+
+// 新增：取消选择
+const cancelSelection = () => {
+  materialDialogVisible.value = false;
+  selectedVideoIds.value = [];
+  selectedMaterialIds.value = [];
+};
+
+// 改进视频文件判断方法（如果原来没有的话）
+const isVideoFile = (filename) => {
+  const videoExtensions = [
+    ".mp4",
+    ".avi",
+    ".mov",
+    ".mkv",
+    ".flv",
+    ".wmv",
+    ".webm",
+    ".m4v",
+    ".3gp",
+    ".3g2",
+    ".f4v",
+    ".asf",
+    ".rm",
+    ".rmvb",
+  ];
+  return videoExtensions.some((ext) => filename.toLowerCase().endsWith(ext));
+};
+const formatDate = (dateString) => {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  return date.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+};
+
+const previewMaterial = (material) => {
+  const previewUrl = materialApi.getMaterialPreviewUrl(
+    material.file_path.split("/").pop()
+  );
+  window.open(previewUrl, "_blank");
+};
+const previewRecentVideo = (video) => {
+  // videoFile目录的文件直接使用文件名
+  const previewUrl = `${apiBaseUrl}/getFile?filename=${video.file_path}`;
+  window.open(previewUrl, "_blank");
+};
+// 新增：导航到素材管理页面
+const navigateToMaterialManagement = () => {
+  materialDialogVisible.value = false;
+  router.push("/material-management");
+};
+
+// 改进现有的 removeVideo 方法，支持通过ID删除
 const removeVideo = (task, index) => {
   task.videos.splice(index, 1);
 };
-
 const previewVideo = (video) => {
   window.open(video.url, "_blank");
 };
@@ -1684,7 +2043,381 @@ $space-2xl: 48px;
     }
   }
 }
+/* 在 PublishCenter.vue 的 <style> 中添加以下样式： */
 
+// 素材选择对话框
+.material-dialog {
+  .material-selector {
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: $space-md;
+      padding: $space-2xl;
+      color: $text-secondary;
+
+      .is-loading {
+        font-size: 32px;
+        animation: rotate 1s linear infinite;
+      }
+    }
+
+    .videos-content {
+      .video-tabs {
+        :deep(.el-tabs__header) {
+          margin-bottom: $space-lg;
+        }
+
+        :deep(.el-tabs__nav-wrap) {
+          background: $bg-gray;
+          border-radius: $radius-md;
+          padding: $space-xs;
+        }
+
+        :deep(.el-tabs__active-bar) {
+          display: none;
+        }
+
+        :deep(.el-tabs__item) {
+          padding: $space-sm $space-lg;
+          border-radius: $radius-sm;
+          font-weight: 500;
+          transition: all 0.3s ease;
+
+          &.is-active {
+            background: white;
+            color: $primary;
+            box-shadow: $shadow-sm;
+          }
+        }
+      }
+
+      .tab-content {
+        .videos-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: $space-lg;
+
+          h5 {
+            font-size: 16px;
+            font-weight: 600;
+            color: $text-primary;
+            margin: 0;
+          }
+
+          .selection-info {
+            display: flex;
+            align-items: center;
+            gap: $space-md;
+            font-size: 14px;
+            color: $text-secondary;
+          }
+        }
+
+        .videos-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          gap: $space-md;
+          max-height: 400px;
+          overflow-y: auto;
+
+          .video-item {
+            background: $bg-gray;
+            border: 2px solid transparent;
+            border-radius: $radius-lg;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+
+            &:hover {
+              transform: translateY(-2px);
+              box-shadow: $shadow-md;
+
+              .video-overlay {
+                opacity: 1;
+              }
+            }
+
+            &.selected {
+              border-color: $primary;
+              box-shadow: 0 0 0 2px rgba(91, 115, 222, 0.2);
+            }
+
+            .video-preview {
+              height: 120px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              position: relative;
+
+              .video-icon {
+                font-size: 32px;
+                color: white;
+              }
+
+              .video-overlay {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+
+                .overlay-content {
+                  display: flex;
+                  gap: $space-sm;
+                }
+              }
+
+              .selected-mark {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                width: 24px;
+                height: 24px;
+                background-color: $primary;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 14px;
+                box-shadow: $shadow-md;
+              }
+
+              .source-badge {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                padding: 2px 8px;
+                border-radius: $radius-sm;
+                font-size: 11px;
+                font-weight: 500;
+                color: white;
+
+                &.recent {
+                  background-color: $warning;
+                }
+
+                &.library {
+                  background-color: $success;
+                }
+              }
+            }
+
+            .video-info {
+              padding: $space-md;
+
+              .video-name {
+                font-weight: 500;
+                color: $text-primary;
+                margin-bottom: $space-xs;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-size: 14px;
+              }
+
+              .video-meta {
+                display: flex;
+                justify-content: space-between;
+                font-size: 12px;
+                color: $text-secondary;
+
+                .video-size {
+                  font-weight: 500;
+                }
+              }
+            }
+          }
+        }
+
+        .empty-videos {
+          padding: $space-2xl;
+          text-align: center;
+        }
+      }
+    }
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+} /* 在 PublishCenter.vue 的 <style> 中添加以下样式： */
+
+// 素材选择对话框
+.material-dialog {
+  .material-selector {
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: $space-md;
+      padding: $space-2xl;
+      color: $text-secondary;
+
+      .is-loading {
+        font-size: 32px;
+        animation: rotate 1s linear infinite;
+      }
+    }
+
+    .materials-content {
+      .materials-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: $space-lg;
+
+        h5 {
+          font-size: 16px;
+          font-weight: 600;
+          color: $text-primary;
+          margin: 0;
+        }
+
+        .selection-info {
+          display: flex;
+          align-items: center;
+          gap: $space-md;
+          font-size: 14px;
+          color: $text-secondary;
+        }
+      }
+
+      .materials-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: $space-md;
+        max-height: 400px;
+        overflow-y: auto;
+
+        .material-item {
+          background: $bg-gray;
+          border: 2px solid transparent;
+          border-radius: $radius-lg;
+          overflow: hidden;
+          cursor: pointer;
+          transition: all 0.3s ease;
+
+          &:hover {
+            transform: translateY(-2px);
+            box-shadow: $shadow-md;
+
+            .material-overlay {
+              opacity: 1;
+            }
+          }
+
+          &.selected {
+            border-color: $primary;
+            box-shadow: 0 0 0 2px rgba(91, 115, 222, 0.2);
+          }
+
+          .material-preview {
+            height: 120px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+
+            .video-icon {
+              font-size: 32px;
+              color: white;
+            }
+
+            .material-overlay {
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: rgba(0, 0, 0, 0.7);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              opacity: 0;
+              transition: opacity 0.3s ease;
+
+              .overlay-content {
+                display: flex;
+                gap: $space-sm;
+              }
+            }
+
+            .selected-mark {
+              position: absolute;
+              top: 8px;
+              right: 8px;
+              width: 24px;
+              height: 24px;
+              background-color: $primary;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: white;
+              font-size: 14px;
+              box-shadow: $shadow-md;
+            }
+          }
+
+          .material-info {
+            padding: $space-md;
+
+            .material-name {
+              font-weight: 500;
+              color: $text-primary;
+              margin-bottom: $space-xs;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+              font-size: 14px;
+            }
+
+            .material-meta {
+              display: flex;
+              justify-content: space-between;
+              font-size: 12px;
+              color: $text-secondary;
+
+              .material-size {
+                font-weight: 500;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    .empty-materials {
+      padding: $space-2xl;
+      text-align: center;
+    }
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 // 响应式设计
 @media (max-width: 768px) {
   .page-header .header-content {
