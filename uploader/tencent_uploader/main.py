@@ -349,8 +349,8 @@ class TencentVideo(object):
                     if any(keyword in req.url for keyword in ['upload', 'mmfinder', 'loadChunk']) else None)
             page.on("response", lambda res: tencent_logger.info(f"📥 响应: {res.status} {res.url}") 
                     if any(keyword in res.url for keyword in ['upload', 'mmfinder', 'loadChunk']) else None)
-            
-            await page.goto("https://channels.weixin.qq.com/platform/post/create")
+            if "post/create" not in page.url:
+                await page.goto("https://channels.weixin.qq.com/platform/post/create")
             
             await page.wait_for_url("https://channels.weixin.qq.com/platform/post/create")
             await page.wait_for_selector('.wujie_iframe', timeout=30000)
