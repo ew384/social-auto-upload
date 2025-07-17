@@ -11,11 +11,10 @@ from myUtils.auth import check_cookie
 from flask import Flask, request, jsonify, Response, render_template, send_from_directory
 from conf import BASE_DIR
 from myUtils.login import get_tencent_cookie, douyin_cookie_gen, get_ks_cookie, xiaohongshu_cookie_gen
-from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs,get_current_browser_mode,show_browser_status
+from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs
 from utils.video_utils import is_video_file
 from datetime import datetime
 import requests
-
 
 
 active_queues = {}
@@ -24,8 +23,8 @@ app = Flask(__name__)
 #允许所有来源跨域访问
 CORS(app)
 
-# 限制上传文件大小为1GB
-app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024
+# 限制上传文件大小为4GB
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024 * 4
 
 # 获取当前目录（假设 index.html 和 assets 在这里）
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -293,8 +292,7 @@ async def getValidAccounts():
         return jsonify({
             "code": 200,
             "msg": "success", 
-            "data": accounts,
-            "browserMode": get_current_browser_mode()  # 简化的模式获取
+            "data": accounts
         }), 200
 
 @app.route('/deleteFile', methods=['GET'])
@@ -451,75 +449,6 @@ def set_browser_mode():
             "data": None
         }), 500
 
-# 添加新的API端点：获取当前浏览器模式
-@app.route('/getBrowserMode', methods=['GET'])
-def get_browser_mode():
-    """获取当前浏览器模式"""
-    mode_name = "multi-account-browser" if USE_MULTI_ACCOUNT_BROWSER else "playwright"
-    
-    return jsonify({
-        "code": 200,
-        "msg": "success",
-        "data": {
-            "mode": mode_name,
-            "useMultiBrowser": USE_MULTI_ACCOUNT_BROWSER
-        }
-    }), 200
-
-@app.route('/getBrowserStatus', methods=['GET'])
-def get_browser_status():
-    """
-    ✅ 保留并简化 - 合并了原来的 check_multi_browser_status 功能
-    """
-    from myUtils.postVideo import get_current_browser_mode
-    
-    current_mode = get_current_browser_mode()
-    
-    multi_browser_available = False
-    multi_browser_info = {}
-    
-    if current_mode == "multi-account-browser":
-        try:
-            import requests
-            response = requests.get('http://localhost:3000/api/health', timeout=3)
-            
-            if response.status_code == 200:
-                multi_browser_available = True
-                result = response.json()
-                multi_browser_info = {
-                    "connected": True,
-                    "version": result.get("version", "unknown"),
-                    "renderer": result.get("renderer", "unknown"),
-                    "uptime": result.get("uptime", 0)
-                }
-            else:
-                multi_browser_info = {
-                    "connected": False,
-                    "error": f"HTTP {response.status_code}"
-                }
-        except Exception as e:
-            multi_browser_info = {
-                "connected": False,
-                "error": str(e)
-            }
-    else:
-        multi_browser_info = {
-            "connected": False,
-            "reason": "使用传统模式"
-        }
-    
-    return jsonify({
-        "code": 200,
-        "msg": "success",
-        "data": {
-            "currentMode": current_mode,
-            "multiBrowserAvailable": multi_browser_available,
-            "multiBrowserInfo": multi_browser_info,
-            "apiUrl": "http://localhost:3000"
-        }
-    }), 200
-
-
 @app.route('/postVideo', methods=['POST'])
 def postVideo():
     """发布视频 - 自动选择最优模式"""
@@ -540,9 +469,6 @@ def postVideo():
     daily_times = data.get('dailyTimes')
     start_days = data.get('startDays')
     
-    current_mode = get_current_browser_mode()
-    print(f"🔧 当前浏览器模式: {current_mode}")
-    
     try:
         # 🔥 最简单的调用 - 底层自动选择最优实现
         match type_val:
@@ -557,10 +483,7 @@ def postVideo():
         
         return jsonify({
             "code": 200,
-            "msg": "发布任务已提交",
-            "data": {
-                "browserMode": current_mode
-            }
+            "msg": "发布任务已提交"
         }), 200
         
     except Exception as e:
@@ -589,14 +512,7 @@ def postVideoBatch():
             }), 400
 
         total_tasks = len(data_list)
-        current_mode = get_current_browser_mode()
-        
         print(f"🚀 接收到 {total_tasks} 个批量发布任务")
-        print(f"🔧 当前浏览器模式: {current_mode}")
-        
-        # 🔥 关键简化：无需判断模式，直接调用原有函数
-        # 底层会自动选择最优的浏览器实现
-        
         success_count = 0
         failed_count = 0
         results = []
@@ -750,7 +666,7 @@ def postVideoBatchAsync():
         from datetime import datetime
         
         task_id = str(uuid.uuid4())[:8]
-        current_mode = get_current_browser_mode()
+
         
         # 初始化任务状态
         batch_task_status[task_id] = {
@@ -760,7 +676,6 @@ def postVideoBatchAsync():
             "completed_tasks": 0,
             "success_count": 0,
             "failed_count": 0,
-            "browser_mode": current_mode,
             "start_time": datetime.now().isoformat(),
             "results": []
         }
@@ -1210,7 +1125,4 @@ async def getAccountsWithGroups():
             "data": accounts
         }), 200
 if __name__ == '__main__':
-    print("🚀 Social Auto Upload 启动")
-    print("=" * 50)
-    show_browser_status()
     app.run(host='127.0.0.1' ,port=5409)

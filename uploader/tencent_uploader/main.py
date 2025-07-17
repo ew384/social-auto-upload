@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 
-#from playwright.async_api import Playwright, async_playwright
-from utils.playwright_compat import async_playwright_compat as async_playwright, Playwright
+from playwright.async_api import Playwright, async_playwright
+#from utils.playwright_compat import async_playwright_compat as async_playwright, Playwright
 import os
 import asyncio
 
@@ -137,7 +137,7 @@ class TencentVideo(object):
     async def upload_file_to_shadow_dom_fixed(self, page):
         """修复的文件上传方法 - 使用Playwright原生上传，避免大文件内存问题"""
         await page.wait_for_selector('wujie-app', timeout=30000)
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.1)
         
         # 处理文件路径
         actual_file_path = self.file_path
@@ -338,12 +338,8 @@ class TencentVideo(object):
         
         file_size_mb = os.path.getsize(self.file_path) / (1024 * 1024)
         tencent_logger.info(f"视频文件大小: {file_size_mb:.2f}MB")
-        
-        browser = await playwright.chromium.launch(
-            headless=False, 
-            executable_path=self.local_executable_path
-        )
-        
+        browser = await playwright.chromium.connect_over_cdp('http://localhost:9712')
+        #browser = await playwright.chromium.launch(headless=False, executable_path=self.local_executable_path)
         try:
             context = await browser.new_context(storage_state=f"{self.account_file}")
             context = await set_init_script(context)
@@ -356,12 +352,11 @@ class TencentVideo(object):
                     if any(keyword in res.url for keyword in ['upload', 'mmfinder', 'loadChunk']) else None)
             
             await page.goto("https://channels.weixin.qq.com/platform/post/create")
-            tencent_logger.info(f'[+]正在上传-------{self.title}')
             
             await page.wait_for_url("https://channels.weixin.qq.com/platform/post/create")
             await page.wait_for_selector('.wujie_iframe', timeout=30000)
-            await asyncio.sleep(3)
-            
+            await asyncio.sleep(0.1)
+            tencent_logger.info(f'[+]正在上传-------{self.title}')
             # 步骤1: 上传文件
             await self.upload_file_to_shadow_dom_fixed(page)
             

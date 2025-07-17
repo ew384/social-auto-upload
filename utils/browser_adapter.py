@@ -14,7 +14,7 @@ class MultiAccountBrowserAdapter:
         self.session.headers.update({'Content-Type': 'application/json'})
         self.account_tabs: Dict[str, str] = {}  # account_file_path -> tab_id
         self.db_path = None
-        print(f"🐛 MultiAccountBrowserAdapter.__init__: db_path = {self.db_path}")
+
     def set_database_path(self, db_path: str):
         """设置数据库路径"""
         self.db_path = db_path
@@ -48,6 +48,29 @@ class MultiAccountBrowserAdapter:
             print(f"⚠️ 获取账号信息失败: {e}")
             return None
 
+    async def load_cookies_only(self, tab_id: str, platform: str, cookie_file: str) -> bool:
+        """仅加载cookies，不进行导航验证"""
+        cookie_file_str = str(cookie_file) if cookie_file else ""
+        
+        if not Path(cookie_file_str).exists():
+            print(f"⚠️ Cookie文件不存在: {cookie_file_str}")
+            return False
+        
+        print(f"🍪 仅加载cookies（不导航验证）: {Path(cookie_file_str).name}")
+        
+        # 加载cookies
+        result = self._make_request('POST', '/account/load-cookies', {
+            "tabId": tab_id,
+            "cookieFile": cookie_file_str
+        })
+        
+        if not result.get("success", False):
+            print(f"❌ Cookies加载失败: {result.get('error')}")
+            return False
+        
+        print(f"✅ Cookies已加载，等待应用自行导航")
+        return True
+    
     def generate_tab_identifier(self, platform: str, cookie_file: str) -> str:
         """生成内部标签页标识符（包含UUID） - 后端使用"""
         cookie_stem = Path(cookie_file).stem  # UUID部分
@@ -89,256 +112,63 @@ class MultiAccountBrowserAdapter:
         platform_name = platform_name_map.get(platform, platform)
         return f"{platform_name}_{uuid_short}"
 
-    async def get_or_create_account_tab(self, platform: str, cookie_file: str, initial_url: str) -> str:
-        """获取或创建账号标签页 - 增强版本"""
+    async def get_or_create_account_tab(self, storage_state: str = None, auto_navigate: bool = True) -> str:
+        """获取或创建账号标签页"""
+        account_key = self.generate_account_key(storage_state)
+        platform = self.infer_platform_from_storage(storage_state)
         
-        # 生成标识符和显示名
-        tab_identifier = self.generate_tab_identifier(platform, cookie_file)
-        display_name = self.generate_display_name(platform, cookie_file)
+        print(f"\n🎯 获取或创建账号标签页:")
+        print(f"   账号标识: {account_key}")
+        print(f"   平台: {platform}")
+        print(f"   自动导航: {auto_navigate}")
         
-        # 使用cookie文件绝对路径作为映射键
-        account_key = str(Path(cookie_file).absolute())
-        
-        print(f"🔍 查找账号标签页:")
-        print(f"    平台: {platform}")
-        print(f"    显示名: {display_name}")
-        print(f"    内部标识: {tab_identifier}")
-        print(f"    Cookie文件: {Path(cookie_file).name}")
-        
-        # 🔥 步骤1：检查 multi-account-browser 中的现有标签页
-        try:
-            result = self._make_request('GET', '/accounts')
-            if result.get('success'):
-                existing_tabs = result.get('data', [])
-                
-                # 🔥 改进：支持多种匹配方式
-                cookie_filename = Path(cookie_file).name
-                for tab in existing_tabs:
-                    is_match = False
-                    
-                    # 方式1: 通过 cookieFile 精确匹配
-                    if tab.get('cookieFile') and Path(tab['cookieFile']).name == cookie_filename:
-                        is_match = True
-                        print(f"🎯 通过 cookieFile 匹配到标签页: {tab['accountName']}")
-                    
-                    # 方式2: 通过账号名称匹配（备用）
-                    elif tab.get('accountName') == tab_identifier:
-                        is_match = True
-                        print(f"🎯 通过 accountName 匹配到标签页: {tab['accountName']}")
-                    
-                    # 方式3: 通过平台和部分UUID匹配（容错）
-                    elif platform in tab.get('accountName', '') and cookie_filename.split('.')[0] in tab.get('accountName', ''):
-                        is_match = True
-                        print(f"🎯 通过平台+UUID匹配到标签页: {tab['accountName']}")
-                    
-                    if is_match:
-                        tab_id = tab['id']
-                        print(f"🔄 发现现有标签页: {tab['accountName']} (ID: {tab_id})")
-                        
-                        # 验证标签页是否仍然有效
-                        if await self.is_tab_valid(tab_id):
-                            print(f"✅ 现有标签页有效，开始验证登录状态...")
-                            
-                            # 🔥 验证 cookies 状态
-                            login_valid = await self.verify_login_status(tab_id, platform)
-                            
-                            if login_valid:
-                                print(f"✅ 账号登录状态有效，直接复用标签页")
-                                await self.switch_to_tab(tab_id)
-                                self.account_tabs[account_key] = tab_id
-                                return tab_id
-                            else:
-                                print(f"⚠️ 账号登录状态失效，重新加载cookies...")
-                                # 重新加载cookies
-                                success = await self.load_cookies_with_verification(tab_id, platform, cookie_file)
-                                if success:
-                                    print(f"✅ Cookies重新加载成功，复用标签页")
-                                    await self.switch_to_tab(tab_id)
-                                    self.account_tabs[account_key] = tab_id
-                                    return tab_id
-                                else:
-                                    print(f"❌ Cookies重新加载失败，关闭旧标签页")
-                                    await self.close_tab(tab_id)
-                        else:
-                            print(f"⚠️ 现有标签页无效，关闭并重新创建")
-                            await self.close_tab(tab_id)
-                        
-                        break  # 找到匹配项就跳出循环
-                        
-        except Exception as e:
-            print(f"⚠️ 检查现有标签页失败: {e}")
-        
-        # 🔥 步骤2：创建新的标签页
-        print(f"🆕 为账号创建新的标签页: {display_name}")
-        tab_id = await self.create_account_tab(platform, tab_identifier, initial_url)
-        # 🔥 步骤3：加载cookies（如果存在）
-        if cookie_file and Path(cookie_file).exists():
-            print(f"🍪 为新标签页加载cookies: {Path(cookie_file).name}")
-            print(f"🔍 Cookie文件大小: {Path(cookie_file).stat().st_size} 字节")
+        # 检查现有标签页
+        if account_key in self._account_tabs:
+            tab_id = self._account_tabs[account_key]
+            print(f"   发现现有标签页: {tab_id}")
             
-            success = await self.load_cookies_with_verification(tab_id, platform, cookie_file)
-            if success:
-                print(f"✅ 新标签页cookies加载并验证成功")
+            if await self._adapter.is_tab_valid(tab_id):
+                await self._adapter.switch_to_tab(tab_id)
+                
+                # 🔥 只在auto_navigate=True时才检查和处理登录状态
+                if auto_navigate and storage_state:
+                    current_url = await self._adapter.get_page_url(tab_id)
+                    login_indicators = ['login', 'signin', 'auth', '登录', '扫码']
+                    needs_auth = any(indicator in current_url.lower() for indicator in login_indicators)
+                    
+                    if needs_auth:
+                        print(f"   ⚠️ 需要重新认证")
+                        success = await self._handle_reauth_with_navigation(tab_id, platform, storage_state)
+                        if not success:
+                            print(f"   ❌ 重新认证失败，创建新标签页")
+                            await self._adapter.close_tab(tab_id)
+                            del self._account_tabs[account_key]
+                            return await self.get_or_create_account_tab(storage_state, auto_navigate)
+                
+                return tab_id
             else:
-                print(f"⚠️ 新标签页cookies加载失败，但继续使用标签页")
-                # 🔥 增加：获取当前页面状态用于调试
-                try:
-                    current_url = await self.get_page_url(tab_id)
-                    page_title = await self.execute_script(tab_id, "document.title")
-                    print(f"🔍 当前页面状态: {current_url}")
-                    print(f"🔍 页面标题: {page_title}")
-                except Exception as e:
-                    print(f"🔍 无法获取页面状态: {e}")
+                del self._account_tabs[account_key]
         
-        # 🔥 步骤4：保存账号映射
-        self.account_tabs[account_key] = tab_id
-        print(f"📋 账号标签页映射已保存: {display_name} -> {tab_id}")
+        # 创建新标签页
+        if auto_navigate:
+            # 完整的导航验证模式
+            initial_url = self.get_platform_initial_url(platform)
+            tab_id = await self._adapter.get_or_create_account_tab(
+                platform=platform,
+                cookie_file=storage_state or "",
+                initial_url=initial_url
+            )
+        else:
+            # 🔥 新的空白模式
+            tab_id = await self._create_blank_tab_with_cookies(platform, storage_state)
         
+        self._account_tabs[account_key] = tab_id
         return tab_id
 
 
-    async def check_if_needs_reauth(self, platform: str, current_url: str) -> bool:
-        """检查是否需要重新认证 - 支持多平台"""
-        # 通用的登录页面检测逻辑
-        login_indicators = ['login', 'signin', 'auth', '登录', '扫码']
-        
-        # 检查URL是否包含登录相关关键词
-        url_needs_auth = any(indicator in current_url.lower() for indicator in login_indicators)
-        
-        if url_needs_auth:
-            return True
-        
-        # 平台特定的检测逻辑
-        platform_specific_checks = {
-            'weixin': lambda url: 'login.html' in url or 'channels.weixin.qq.com/login' in url,
-            'douyin': lambda url: 'login' in url or 'sso.douyin.com' in url,
-            'xiaohongshu': lambda url: 'login' in url or 'xiaohongshu.com/login' in url,
-            'kuaishou': lambda url: 'login' in url or 'kuaishou.com/login' in url
-        }
-        
-        platform_check = platform_specific_checks.get(platform)
-        if platform_check and platform_check(current_url):
-            return True
-        
-        return False
-
-    async def handle_reauth(self, tab_id: str, platform: str, cookie_file: str, initial_url: str) -> bool:
-        """通用的重新认证处理"""
-        try:
-            print(f"🔄 开始重新认证: {tab_id}")
-            
-            # 方案1: 重新加载cookies
-            print("    尝试重新加载cookies...")
-            success = await self.load_cookies_with_verification(tab_id, platform, cookie_file)
-            if success:
-                print("    ✅ cookies重新加载成功")
-                return True
-            
-            # 方案2: 导航到首页再重新加载
-            print("    尝试导航到首页重新加载...")
-            
-            # 根据平台选择合适的首页
-            platform_home_urls = {
-                'weixin': 'https://channels.weixin.qq.com',
-                'douyin': 'https://creator.douyin.com',
-                'xiaohongshu': 'https://creator.xiaohongshu.com',
-                'kuaishou': 'https://cp.kuaishou.com'
-            }
-            
-            home_url = platform_home_urls.get(platform, initial_url)
-            await self.navigate_to_url(tab_id, home_url)
-            await asyncio.sleep(3)
-            
-            # 重新加载cookies
-            await self.load_cookies(tab_id, cookie_file)
-            await asyncio.sleep(3)
-            
-            # 刷新页面
-            await self.refresh_page(tab_id)
-            await asyncio.sleep(5)
-            
-            # 检查结果
-            current_url = await self.get_page_url(tab_id)
-            needs_auth = await self.check_if_needs_reauth(platform, current_url)
-            
-            if not needs_auth:
-                print("    ✅ 第二次尝试成功")
-                return True
-            else:
-                print("    ❌ 重新认证仍然失败")
-                return False
-                
-        except Exception as e:
-            print(f"    ❌ 重新认证过程出错: {e}")
-            return False
-
-    async def load_cookies_with_verification(self, tab_id: str, platform: str, cookie_file: str) -> bool:
-        cookie_file_str = str(cookie_file) if cookie_file else ""
-        
-        if not Path(cookie_file_str).exists():
-            print(f"⚠️ Cookie文件不存在: {cookie_file_str}")
-            return False
-        
-        print(f"🍪 开始加载并验证cookies: {Path(cookie_file_str).name}")
-        
-        # 1. 加载cookies
-        result = self._make_request('POST', '/account/load-cookies', {
-            "tabId": tab_id,
-            "cookieFile": cookie_file_str
-        })
-        
-        if not result.get("success", False):
-            print(f"❌ Cookies加载失败: {result.get('error')}")
-            return False
-        
-        print(f"🍪 Cookies文件加载成功，开始导航到主页...")
-        
-        # 🔥 关键修改：不要刷新当前页面，而是导航到平台主页
-        platform_home_urls = {
-            'weixin': 'https://channels.weixin.qq.com/platform',  # 使用平台主页而不是根目录
-            'douyin': 'https://creator.douyin.com/creator-micro/content/upload',
-            'xiaohongshu': 'https://creator.xiaohongshu.com/creator-micro/content/upload',
-            'kuaishou': 'https://cp.kuaishou.com/article/publish/video'
-        }
-        
-        target_url = platform_home_urls.get(platform, 'https://channels.weixin.qq.com/platform')
-        
-        # 2. 导航到目标页面
-        await self.navigate_to_url(tab_id, target_url)
-        await asyncio.sleep(5)  # 给页面足够时间加载
-        
-        # 3. 验证cookies是否生效
-        max_retries = 2  # 减少重试次数
-        for i in range(max_retries):
-            try:
-                current_url = await self.get_page_url(tab_id)
-                print(f"验证第{i+1}次，当前URL: {current_url}")
-                
-                # 🔥 优化：检查URL是否不再包含登录标识
-                needs_auth = self._is_login_url(current_url)
-                
-                if not needs_auth:
-                    print(f"✅ Cookies验证成功: {Path(cookie_file).name}")
-                    return True
-                    
-                # 如果仍需要认证，等待一下再检查
-                if i < max_retries - 1:
-                    print(f"第{i+1}次验证失败，等待页面完全加载...")
-                    await asyncio.sleep(3)
-                        
-            except Exception as e:
-                print(f"验证过程出错: {e}")
-        
-        print(f"❌ Cookies验证失败: {Path(cookie_file).name}")
-        return False
-
-    def _is_login_url(self, url: str) -> bool:
-        """检查URL是否是登录页面"""
-        login_indicators = [
-            'login.html', 'login', 'signin', 'auth', 
-            '登录', '扫码', 'qrcode', 'scan'
-        ]
-        return any(indicator in url.lower() for indicator in login_indicators)
+    async def create_temp_blank_tab(self) -> str:
+        """创建临时空白标签页（用于无storage_state的情况）"""
+        return await self._adapter.create_account_tab("temp", "temp_blank", "about:blank")
 
     def debug_print_account_mapping(self):
         """调试：打印当前的账号映射"""
@@ -361,13 +191,12 @@ class MultiAccountBrowserAdapter:
     # 基础API方法（保持不变）
     # ========================================
     
-    def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
+    def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, timeout: int = 60) -> Dict[str, Any]:
         """统一的API请求方法"""
         url = f"{self.api_base_url}{endpoint}"
         
         try:
-            timeout = 120 if '/set-file' in endpoint else 60
-            
+            # 使用传入的 timeout 参数
             if method.upper() == 'GET':
                 response = self.session.get(url, timeout=timeout)
             else:
@@ -418,16 +247,76 @@ class MultiAccountBrowserAdapter:
             return False
     
     async def execute_script(self, tab_id: str, script: str) -> Any:
-        """在指定标签页执行脚本"""
-        result = self._make_request('POST', '/account/execute', {
-            "tabId": tab_id, 
-            "script": script
-        })
+        """在指定标签页执行脚本 - 添加健壮的错误处理"""
+        max_retries = 3
+        base_wait = 1
         
-        if result.get("success"):
-            return result.get("data")
-        else:
-            raise Exception(f"脚本执行失败: {result.get('error')}")
+        for attempt in range(max_retries):
+            try:
+                # 🔥 在每次执行前稍微等待，避免过于频繁的请求
+                if attempt > 0:
+                    wait_time = base_wait * (2 ** (attempt - 1))
+                    print(f"⏳ [{tab_id}] 等待 {wait_time}s 后重试脚本执行...")
+                    import asyncio
+                    await asyncio.sleep(wait_time)
+                
+                result = self._make_request('POST', '/account/execute', {
+                    "tabId": tab_id, 
+                    "script": script
+                })
+                
+                if result.get("success"):
+                    return result.get("data")
+                else:
+                    error_msg = result.get("error", "Unknown error")
+                    print(f"❌ [{tab_id}] 脚本执行失败: {error_msg}")
+                    
+                    # 🔥 检查是否是严重错误（渲染器崩溃）
+                    if "renderer console" in error_msg.lower() or "script failed to execute" in error_msg.lower():
+                        print(f"🚨 [{tab_id}] 检测到渲染器错误，尝试恢复...")
+                        
+                        # 尝试恢复：刷新页面
+                        try:
+                            await self._try_recovery(tab_id)
+                        except Exception as recovery_error:
+                            print(f"⚠️ [{tab_id}] 恢复失败: {recovery_error}")
+                    
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        raise Exception(f"脚本执行失败 (重试{max_retries}次): {error_msg}")
+                        
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"⚠️ [{tab_id}] 执行异常 (第{attempt+1}次): {e}")
+                    continue
+                else:
+                    raise Exception(f"脚本执行失败 (重试{max_retries}次): {e}")
+
+    async def _try_recovery(self, tab_id: str) -> None:
+        """尝试恢复标签页"""
+        try:
+            import asyncio
+            
+            print(f"🔄 [{tab_id}] 尝试恢复标签页...")
+            
+            # 方法1: 简单等待，让页面稳定
+            await asyncio.sleep(3)
+            
+            # 方法2: 尝试执行一个简单的脚本测试页面是否响应
+            test_result = self._make_request('POST', '/account/execute', {
+                "tabId": tab_id,
+                "script": "document.readyState"
+            })
+            
+            if test_result.get("success"):
+                print(f"✅ [{tab_id}] 页面恢复正常")
+            else:
+                print(f"⚠️ [{tab_id}] 页面仍然异常，可能需要重新加载")
+                
+        except Exception as e:
+            print(f"❌ [{tab_id}] 恢复过程出错: {e}")
+            raise
     
     async def navigate_to_url(self, tab_id: str, url: str) -> bool:
         """导航到指定URL"""
