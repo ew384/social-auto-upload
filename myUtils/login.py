@@ -50,6 +50,7 @@ async def douyin_cookie_gen(id,status_queue):
             await browser.close()
             status_queue.put("500")
             return None
+
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
         await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
@@ -127,6 +128,7 @@ async def get_tencent_cookie(id,status_queue):
             await context.close()
             await browser.close()
             return None
+
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
         await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))

@@ -225,7 +225,8 @@ class MultiAccountBrowserAdapter:
         if result.get("success"):
             tab_id = result["data"]["tabId"]
             print(f"✅ 标签页创建成功: {tab_id}")
-            await asyncio.sleep(3)
+            await self.switch_to_tab(tab_id)
+            await asyncio.sleep(0.1)
             return tab_id
         else:
             raise Exception(f"创建标签页失败: {result.get('error')}")
@@ -301,7 +302,7 @@ class MultiAccountBrowserAdapter:
             print(f"🔄 [{tab_id}] 尝试恢复标签页...")
             
             # 方法1: 简单等待，让页面稳定
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
             
             # 方法2: 尝试执行一个简单的脚本测试页面是否响应
             test_result = self._make_request('POST', '/account/execute', {
@@ -326,7 +327,7 @@ class MultiAccountBrowserAdapter:
         })
         
         if result.get("success"):
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
             return True
         else:
             raise Exception(f"导航失败: {result.get('error')}")

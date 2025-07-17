@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 
-from playwright.async_api import Playwright, async_playwright
-#from utils.playwright_compat import async_playwright_compat as async_playwright, Playwright
+#from playwright.async_api import Playwright, async_playwright
+from utils.smart_playwright import async_playwright, Playwright
 import os
 import asyncio
 
@@ -338,8 +338,7 @@ class TencentVideo(object):
         
         file_size_mb = os.path.getsize(self.file_path) / (1024 * 1024)
         tencent_logger.info(f"视频文件大小: {file_size_mb:.2f}MB")
-        browser = await playwright.chromium.connect_over_cdp('http://localhost:9712')
-        #browser = await playwright.chromium.launch(headless=False, executable_path=self.local_executable_path)
+        browser = await playwright.chromium.launch(headless=False, executable_path=self.local_executable_path)
         try:
             context = await browser.new_context(storage_state=f"{self.account_file}")
             context = await set_init_script(context)
@@ -409,7 +408,7 @@ class TencentVideo(object):
             
         finally:
             try:
-                await context.close()
+                ##await context.close()
                 await browser.close()
             except:
                 pass
