@@ -506,55 +506,7 @@ class PlaywrightCompatContext:
                             
         except Exception as e:
             print(f"❌ 重建映射失败: {e}")
-
-    async def _get_native_page_for_tab(self, tab_id):
-        """获取指定标签页的原生页面"""
-        try:
-            # 🔥 如果没有连接，创建连接
-            if self._cdp_browser is None:
-                from playwright.async_api import async_playwright
-                self._playwright_instance = async_playwright()
-                pw = await self._playwright_instance.__aenter__()
-                self._cdp_browser = await pw.chromium.connect_over_cdp('http://localhost:9712')
-                print("✅ CDP 连接已建立")
-            
-            # 🔥 通过 API 获取指定 tab 的 URL，然后匹配页面
-            import requests
-            response = requests.get(f'http://localhost:3000/api/account/{tab_id}')
-            if response.status_code == 200:
-                tab_info = response.json()['data']
-                tab_url = tab_info.get('url', 'about:blank')
-                
-                # 在所有页面中查找匹配的页面
-                contexts = self._cdp_browser.contexts
-                if contexts and len(contexts) > 0:
-                    pages = contexts[0].pages
-                    
-                    print(f"🔍 查找标签页 {tab_id} 对应的页面:")
-                    print(f"   目标 URL: {tab_url}")
-                    
-                    for i, page in enumerate(pages):
-                        page_url = page.url
-                        print(f"   页面 {i}: {page_url}")
-                        
-                        # 🔥 匹配逻辑：about:blank 或 URL 包含关键部分
-                        if (tab_url == 'about:blank' and page_url == 'about:blank') or \
-                           (tab_url != 'about:blank' and tab_url in page_url):
-                            print(f"✅ 找到匹配页面: {page_url}")
-                            return page
-                    
-                    # 如果没找到精确匹配，返回最后创建的页面（通常是我们想要的）
-                    if pages:
-                        page = pages[-1]
-                        print(f"⚠️ 使用最新页面: {page.url}")
-                        return page
-            
-            raise Exception(f"无法找到标签页 {tab_id} 对应的页面")
-            
-        except Exception as e:
-            print(f"❌ 获取原生页面失败: {e}")
-            raise
-    
+ 
     async def _apply_init_scripts_to_tab(self, tab_id: str) -> None:
         """应用初始化脚本到标签页 - 🔥 直接使用 multi-account-browser API"""
         print(f"📜 [{tab_id}] 应用 {len(self._init_scripts)} 个初始化脚本")

@@ -9,6 +9,7 @@ from uploader.xiaohongshu_uploader.main import XiaoHongShuVideo
 from utils.constant import TencentZoneTypes
 from utils.files_times import generate_schedule_time_next_day
 
+
 def post_video_tencent(title, files, tags, account_file, category=TencentZoneTypes.LIFESTYLE.value, enableTimer=False, videos_per_day=1, daily_times=None, start_days=0):
     """视频号发布 - 自动选择浏览器实现"""
     account_file = [Path(BASE_DIR / "cookiesFile" / file) for file in account_file]

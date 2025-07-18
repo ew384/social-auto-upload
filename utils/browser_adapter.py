@@ -165,7 +165,6 @@ class MultiAccountBrowserAdapter:
         self._account_tabs[account_key] = tab_id
         return tab_id
 
-
     async def create_temp_blank_tab(self) -> str:
         """创建临时空白标签页（用于无storage_state的情况）"""
         return await self._adapter.create_account_tab("temp", "temp_blank", "about:blank")
@@ -187,10 +186,7 @@ class MultiAccountBrowserAdapter:
         print(f"总计: {len(self.account_tabs)} 个账号映射")
         print("="*60 + "\n")
 
-    # ========================================
-    # 基础API方法（保持不变）
-    # ========================================
-    
+
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, timeout: int = 60) -> Dict[str, Any]:
         """统一的API请求方法"""
         url = f"{self.api_base_url}{endpoint}"

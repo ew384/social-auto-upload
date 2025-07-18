@@ -74,7 +74,6 @@ async def douyin_cookie_gen(id,status_queue):
             print("✅ 用户状态已记录")
         status_queue.put("200")
 
-
 # 视频号登录
 async def get_tencent_cookie(id,status_queue):
     url_changed_event = asyncio.Event()
