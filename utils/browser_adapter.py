@@ -58,7 +58,7 @@ class MultiAccountBrowserAdapter:
 
     def get_account_info(self, tab_id: str, platform: str) -> dict:
         """获取账号信息"""
-        result = self._make_request('POST', '/account/get-info', {
+        result = self._make_request('POST', '/automation/get-account-info', {
             "tabId": tab_id,
             "platform": platform
         })
@@ -68,7 +68,7 @@ class MultiAccountBrowserAdapter:
         """获取平台选择器配置（调试用）"""
         result = self._make_request('GET', f'/account/platform-selectors/{platform}')
         return result.get("data", {}) if result.get("success") else {}
-
+    
     def download_avatar(self, avatar_url: str, platform: str, account_name: str, account_id: str = None) -> str:
         """下载用户头像到本地"""
         if not avatar_url or not avatar_url.startswith('http'):
@@ -95,8 +95,8 @@ class MultiAccountBrowserAdapter:
             avatar_filename = f"avatar{file_ext}"
             avatar_path = avatar_dir / avatar_filename
             
-            # 下载头像
-            response = requests.get(avatar_url, timeout=10, headers={
+            # 🔥 修复SSL问题：禁用SSL验证
+            response = requests.get(avatar_url, timeout=10, verify=False, headers={
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             })
             response.raise_for_status()
@@ -113,7 +113,7 @@ class MultiAccountBrowserAdapter:
         except Exception as e:
             print(f"❌ 头像下载失败: {e}")
             return None
-    
+        
     def get_account_info_with_avatar(self, tab_id: str, platform: str, base_dir: str) -> dict:
         """🔥 获取账号信息并下载头像（仅数据获取，不保存数据库）"""
         try:
