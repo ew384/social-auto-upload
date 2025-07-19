@@ -1,9 +1,13 @@
 # utils/browser_adapter.py
 import requests
 from typing import Optional, Dict, Any
+import os
+from pathlib import Path
+from urllib.parse import urlparse
+#import hashlib
+
 
 class MultiAccountBrowserAdapter:
-    """Multi-Account-Browser API 适配层 - 精简版"""
     
     def __init__(self, api_base_url: str = "http://localhost:3000/api"):
         self.api_base_url = api_base_url
@@ -29,7 +33,124 @@ class MultiAccountBrowserAdapter:
             raise Exception(f"请求超时: {e}")
         except requests.exceptions.RequestException as e:
             raise Exception(f"API请求失败: {e}")
+    
+    async def get_qr_code(self, tab_id: str, selector: str) -> Optional[str]:
+        """获取页面中的二维码图片URL"""
+        result = self._make_request('POST', '/account/get-qrcode', {
+            "tabId": tab_id, "selector": selector
+        })
+        return result["data"]["qrUrl"] if result.get("success") else None
 
+    async def wait_for_url_change(self, tab_id: str, timeout: int = 200000) -> bool:
+        """等待页面URL变化"""
+        result = self._make_request('POST', '/account/wait-url-change', {
+            "tabId": tab_id, "timeout": timeout
+        }, timeout=timeout//1000 + 10)
+        return result.get("data", {}).get("urlChanged", False)
+    
+    def extract_page_elements(self, tab_id: str, selectors: dict) -> dict:
+        """通用页面元素提取"""
+        result = self._make_request('POST', '/account/extract-elements', {
+            "tabId": tab_id,
+            "selectors": selectors
+        })
+        return result.get("data", {}) if result.get("success") else {}
+
+    def get_account_info(self, tab_id: str, platform: str) -> dict:
+        """获取账号信息"""
+        result = self._make_request('POST', '/account/get-info', {
+            "tabId": tab_id,
+            "platform": platform
+        })
+        return result.get("data", {}) if result.get("success") else {}
+
+    def get_platform_selectors(self, platform: str) -> dict:
+        """获取平台选择器配置（调试用）"""
+        result = self._make_request('GET', f'/account/platform-selectors/{platform}')
+        return result.get("data", {}) if result.get("success") else {}
+
+    def download_avatar(self, avatar_url: str, platform: str, account_name: str, account_id: str = None) -> str:
+        """下载用户头像到本地"""
+        if not avatar_url or not avatar_url.startswith('http'):
+            return None
+        
+        try:
+            # 创建头像存储目录结构：platform/accountName_accountId/
+            safe_account_name = "".join(c for c in account_name if c.isalnum() or c in (' ', '-', '_')).strip()
+            safe_account_id = "".join(c for c in (account_id or '')) if account_id else ''
+            
+            if safe_account_id:
+                folder_name = f"{safe_account_name}_{safe_account_id}"
+            else:
+                folder_name = safe_account_name
+                
+            avatar_dir = Path("sau_frontend/src/assets/avatar") / platform / folder_name
+            avatar_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 获取文件扩展名
+            parsed_url = urlparse(avatar_url)
+            file_ext = os.path.splitext(parsed_url.path)[1] or '.jpg'
+            
+            # 生成文件名：avatar + 扩展名
+            avatar_filename = f"avatar{file_ext}"
+            avatar_path = avatar_dir / avatar_filename
+            
+            # 下载头像
+            response = requests.get(avatar_url, timeout=10, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            response.raise_for_status()
+            
+            # 保存文件
+            with open(avatar_path, 'wb') as f:
+                f.write(response.content)
+            
+            # 返回相对路径（前端可用）
+            relative_path = f"assets/avatar/{platform}/{folder_name}/{avatar_filename}"
+            print(f"✅ 头像已保存: {relative_path}")
+            return relative_path
+            
+        except Exception as e:
+            print(f"❌ 头像下载失败: {e}")
+            return None
+    
+    def get_account_info_with_avatar(self, tab_id: str, platform: str, base_dir: str) -> dict:
+        """🔥 获取账号信息并下载头像（仅数据获取，不保存数据库）"""
+        try:
+            # 获取账号信息
+            account_info = self.get_account_info(tab_id, platform)
+            
+            if not account_info or not account_info.get('accountName'):
+                print("⚠️ 未获取到账号信息")
+                return None
+            
+            # 下载头像
+            avatar_url = account_info.get('avatar')
+            if avatar_url:
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(base_dir)
+                    local_avatar_path = self.download_avatar(
+                        avatar_url, 
+                        platform, 
+                        account_info.get('accountName'),
+                        account_info.get('accountId')
+                    )
+                    account_info['localAvatar'] = local_avatar_path
+                except Exception as e:
+                    print(f"❌ 头像下载失败: {e}")
+                    account_info['localAvatar'] = None
+                finally:
+                    os.chdir(original_cwd)
+            else:
+                account_info['localAvatar'] = None
+            
+            print(f"✅ 账号信息获取成功: {account_info.get('accountName')} (粉丝: {account_info.get('followersCount')})")
+            return account_info
+            
+        except Exception as e:
+            print(f"❌ 获取账号信息异常: {e}")
+            return None
     # 标签页基础操作
     async def create_account_tab(self, account_name: str, platform: str, initial_url: str) -> str:
         """创建账号标签页"""
