@@ -69,13 +69,13 @@ class MultiAccountBrowserAdapter:
         result = self._make_request('GET', f'/account/platform-selectors/{platform}')
         return result.get("data", {}) if result.get("success") else {}
     
-    def download_avatar(self, avatar_url: str, platform: str, account_name: str, account_id: str = None) -> str:
-        """下载用户头像到本地"""
-        if not avatar_url or not avatar_url.startswith('http'):
-            return None
-        
+    def download_avatar_with_curl(self, avatar_url: str, platform: str, account_name: str, account_id: str = None) -> str:
+        """使用curl下载头像"""
         try:
-            # 创建头像存储目录结构：platform/accountName_accountId/
+            import subprocess
+            import shlex
+            
+            # 创建目录
             safe_account_name = "".join(c for c in account_name if c.isalnum() or c in (' ', '-', '_')).strip()
             safe_account_id = "".join(c for c in (account_id or '')) if account_id else ''
             
@@ -87,33 +87,55 @@ class MultiAccountBrowserAdapter:
             avatar_dir = Path("sau_frontend/src/assets/avatar") / platform / folder_name
             avatar_dir.mkdir(parents=True, exist_ok=True)
             
-            # 获取文件扩展名
+            # 生成文件名
+            from urllib.parse import urlparse
             parsed_url = urlparse(avatar_url)
             file_ext = os.path.splitext(parsed_url.path)[1] or '.jpg'
-            
-            # 生成文件名：avatar + 扩展名
             avatar_filename = f"avatar{file_ext}"
             avatar_path = avatar_dir / avatar_filename
             
-            # 🔥 修复SSL问题：禁用SSL验证
-            response = requests.get(avatar_url, timeout=10, verify=False, headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            })
-            response.raise_for_status()
+            # 使用curl下载
+            cmd = [
+                'curl', 
+                '-L',  # 跟随重定向
+                '-k',  # 忽略SSL证书错误
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                '--max-time', '10',
+                '--output', str(avatar_path),
+                avatar_url
+            ]
             
-            # 保存文件
-            with open(avatar_path, 'wb') as f:
-                f.write(response.content)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
             
-            # 返回相对路径（前端可用）
-            relative_path = f"assets/avatar/{platform}/{folder_name}/{avatar_filename}"
-            print(f"✅ 头像已保存: {relative_path}")
-            return relative_path
-            
+            if result.returncode == 0 and avatar_path.exists() and avatar_path.stat().st_size > 0:
+                relative_path = f"assets/avatar/{platform}/{folder_name}/{avatar_filename}"
+                print(f"✅ 头像已保存(curl): {relative_path}")
+                return relative_path
+            else:
+                print(f"❌ curl下载失败: {result.stderr}")
+                return None
+                
         except Exception as e:
-            print(f"❌ 头像下载失败: {e}")
+            print(f"❌ curl下载异常: {e}")
+            return None
+
+    def download_avatar(self, avatar_url: str, platform: str, account_name: str, account_id: str = None) -> str:
+        """下载用户头像到本地 - 多重备用方案"""
+        if not avatar_url or not avatar_url.startswith('http'):
             return None
         
+        # 方案1：尝试curl
+        try:
+            result = self.download_avatar_with_curl(avatar_url, platform, account_name, account_id)
+            if result:
+                return result
+        except:
+            pass
+        
+        # 方案2：返回原始URL
+        print(f"⚠️ 无法下载头像文件，返回原始URL: {avatar_url}")
+        return avatar_url
+
     def get_account_info_with_avatar(self, tab_id: str, platform: str, base_dir: str) -> dict:
         """🔥 获取账号信息并下载头像（仅数据获取，不保存数据库）"""
         try:
