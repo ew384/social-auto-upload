@@ -169,6 +169,89 @@ class MultiAccountBrowserAdapter:
         else:
             raise Exception(f"创建标签页失败: {result.get('error')}")
 
+    async def get_or_create_tab(self, cookie_file: str, platform: str, initial_url: str, tab_name_prefix: str = None) -> str:
+        """
+        获取或创建标签页 - 通用方法
+        
+        Args:
+            cookie_file: Cookie文件路径/名称，用作标识符
+            platform: 平台名称 (xiaohongshu, wechat, douyin, kuaishou)
+            initial_url: 初始URL
+            tab_name_prefix: 标签页名称前缀，如 "视频号_", "抖音_"
+        
+        Returns:
+            str: 标签页ID
+        """
+        from utils.common import get_account_info_from_db  # 导入已有函数
+        
+
+    async def get_or_create_tab(self, cookie_file: str, platform: str, initial_url: str, tab_name_prefix: str = None) -> str:
+        """
+        获取或创建标签页 - 通用方法
+        
+        Args:
+            cookie_file: Cookie文件路径/名称，用作标识符
+            platform: 平台名称 (xiaohongshu, wechat, douyin, kuaishou)
+            initial_url: 初始URL
+            tab_name_prefix: 标签页名称前缀，如 "视频号_", "抖音_"
+        
+        Returns:
+            str: 标签页ID
+        """
+        from utils.common import get_account_info_from_db  # 导入已有函数
+        
+        cookie_identifier = str(Path(cookie_file).name) if isinstance(cookie_file, (str, Path)) else str(cookie_file)
+        
+        # 1. 检查现有标签页
+        try:
+            tabs = await self.get_all_tabs()
+            for tab in tabs.get('data', []):
+                # 🔥 关键：只比较文件名，不比较完整路径
+                tab_cookie_file = tab.get('cookieFile')
+                if tab_cookie_file:
+                    tab_cookie_name = str(Path(tab_cookie_file).name)
+                    if tab_cookie_name == cookie_identifier:
+                        print(f"🔄 复用现有标签页: {tab['id']} (Cookie匹配: {cookie_identifier})")
+                        return tab['id']
+                else:
+                    print(f"📋 标签页 {cookie_file} 不匹配 (Cookie: {tab.get('cookieFile')})")
+        except Exception as e:
+            print(f"⚠️ 查询现有标签页失败: {e}")
+        
+        # 2. 创建新标签页
+        try:
+            # 获取账号信息用于命名
+            account_info = get_account_info_from_db(cookie_file)
+            if account_info:
+                account_name = account_info.get('username', 'unknown')
+            else:
+                account_name = 'unknown'
+            
+            # 生成标签页名称
+            if tab_name_prefix:
+                full_tab_name = f"{tab_name_prefix}{account_name}"
+            else:
+                platform_prefix_map = {
+                    'xiaohongshu': '小红书_',
+                    'wechat': '视频号_', 
+                    'douyin': '抖音_',
+                    'kuaishou': '快手_'
+                }
+                prefix = platform_prefix_map.get(platform, f'{platform}_')
+                full_tab_name = f"{prefix}{account_name}"
+            
+            # 创建标签页（直接传递 cookie_file，一步到位）
+            tab_id = await self.create_account_tab(
+                account_name=full_tab_name,
+                platform=platform,
+                initial_url=initial_url,
+            )
+            await self.load_cookies(tab_id, cookie_file)
+            return tab_id
+            
+        except Exception as e:
+            raise Exception(f"创建标签页失败: {e}")
+
     async def switch_to_tab(self, tab_id: str) -> bool:
         """切换到指定标签页"""
         result = self._make_request('POST', '/account/switch', {"tabId": tab_id})

@@ -43,7 +43,7 @@ try:
     #cursor.execute('''
     #                INSERT INTO user_info (type, filePath, userName, status)
     #                VALUES (?, ?, ?, ?)
-    #                ''', (2, "a60a3e8e-62ec-11f0-83a3-4925f36afe0f.json", "endian", 1))
+    #                ''', (2, "2a928562-643c-11f0-8a24-a45e60e0141b.json", "endian", 1))
     #conn.commit()
     cursor.execute("SELECT id, userName, group_id FROM user_info WHERE group_id IS NOT NULL")
     grouped_accounts = cursor.fetchall()
